@@ -119,7 +119,7 @@ const FEEL={stac:{lag:3,jit:4,att:.002,rel:.12,br:.8},b808:{lag:1,jit:2,att:.002
 const SUST=new Set(['organ','bow','ens','solo','pipe','reed','brass','pad']),SCOOPK=new Set(['reed','brass','pipe','solo']),SLIDEK=new Set(['bassU','b808']);
 
 /* ---------- sample library ---------- */
-let DC=null;const LOCAL={hq:'sf/hq/',rx:'sf/rx/',kit:'sf/kit/'};
+let DC=null;const ROOT=window.PBC_ASSETS||'https://hiandrewfisher.github.io/promo-bed-composer/',LOCAL={hq:ROOT+'sf/hq/',rx:ROOT+'sf/rx/',kit:ROOT+'sf/kit/'};
 async function grab(dir,name){const r=await fetch(LOCAL[dir]+name+'.json');if(!r.ok)throw Error('Could not load '+name);return r.json()}
 const banks=new Map();
 function bank(dir,name){const k=dir+'/'+name;let p=banks.get(k);if(!p){p=grab(dir,name).then(j=>({keys:Object.keys(j.samples).map(Number).sort((a,b)=>a-b),b64:j.samples,tune:j.tune||{}}));banks.set(k,p);p.catch(()=>banks.delete(k))}return p}
@@ -396,7 +396,7 @@ function blendG(W,seed){const ids=Object.keys(W||{}).filter(k=>G[k]&&W[k]>0).sor
  const shown=ids.filter(k=>from[k]||k==dg||k==hg);S.n=shown.slice(0,3).map(k=>G[k].n).join(' × ')+(shown.length>3?' +'+(shown.length-3):'');S.d='Blend of '+ids.map(k=>G[k].n+' '+Math.round(wt(k)*100)+'%').join(', ');
  S.parts=from;S.drumsFrom=dg;S.harmonyFrom=hg;return S}
 /* ---------- the source library: thousands of public-domain pieces, loaded a chunk at a time ---------- */
-const LIBC={};let LIBI=null;const libBase=()=>(window.PBC_LIB||'lib/');
+const LIBC={};let LIBI=null;const libBase=()=>(window.PBC_LIB||ROOT+'lib/');
 async function libJSON(f){if(LIBC[f])return LIBC[f];const p=fetch(libBase()+f).then(r=>{if(!r.ok)throw new Error('library '+r.status);return r.json()});LIBC[f]=p;try{return await p}catch(e){delete LIBC[f];throw e}}
 async function pickPiece(seed,avoid){if(!LIBI)LIBI=await libJSON('index.json');const R=rng((seed^0x5eed11)>>>0),N=LIBI.n.length;let i=Math.floor(R()*N);for(let t=0;t<30&&avoid&&avoid.has(i);t++)i=Math.floor(R()*N);const[ch,j]=LIBI.n[i];const arr=await libJSON('c'+String(ch).padStart(2,'0')+'.json');const pc=arr[j];pc._i=i;return pc}
 /* ---------- composer: source composition + voice analysis + genre blueprint ---------- */
