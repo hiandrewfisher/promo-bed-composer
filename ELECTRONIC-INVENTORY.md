@@ -1,6 +1,6 @@
-# Electronic instruments and effects
+# Instrument and effects inventory
 
-35 tonal synth voices, 6 transition patches, 16 drum types across 6 distinct kits, and 52 processing types. Native synths generate audio locally; the recorded instrument catalogue remains available.
+Use the instrument picker and **Sound and mix effects** on any stem. Recorded hybrids process the original bundled acoustic recordings. Vocal chops are synthesized formant voices, not recordings of a singer.
 
 ## leads
 
@@ -26,6 +26,8 @@
 - Plucked synth bass
 - Distorted mid-bass
 - Neuro bass
+- Phase-bent bass
+- FM punch bass
 
 ## chords
 
@@ -58,7 +60,36 @@
 - Impact / boom
 - Sub drop
 
-## Electronic drums
+## hybrid
+
+- Felt piano cut
+- Palm-muted steel guitar
+- Muted trumpet chop
+- Breath flute texture
+- Reverse bowed cello
+- Shaped marimba strike
+- Granular string halo
+- Close chamber reed
+
+## digital
+
+- Formant vocal chop
+- Breathy vowel slice
+- Spectral pluck
+
+## Kits
+
+- EDM house / 909-style
+- Trance / layered 909-style
+- Techno / driven
+- Trap / 808-style
+- Dubstep / punch
+- Hardstyle / distorted
+- Bass house / short punch
+- UK garage / skippy
+- Breaks / tight snap
+
+## Drum sounds
 
 - EDM kick
 - Hard kick
@@ -77,15 +108,6 @@
 - Cowbell
 - Tambourine / metallic percussion
 
-## Electronic kits
-
-- EDM house / 909-style
-- Trance / layered 909-style
-- Techno / driven
-- Trap / 808-style
-- Dubstep / punch
-- Hardstyle / distorted
-
 ## Processing: tone
 
 - Resonant low-pass
@@ -96,6 +118,8 @@
 - Build / drop filter automation
 - Note filter envelope
 - Three-band EQ
+- Presence notch
+- Body resonator
 
 ## Processing: drive
 
@@ -107,6 +131,7 @@
 - Wavefolding
 - Bit crushing
 - Sample-and-hold reduction
+- Split-band saturation
 
 ## Processing: motion
 
@@ -137,6 +162,8 @@
 - Stereo width
 - Stereo placement
 - Haas stereo delay
+- Stereo early reflections
+- Frequency-selective bass mono
 
 ## Processing: dynamics
 
@@ -145,6 +172,7 @@
 - Parallel compression
 - Master glue compression
 - Look-ahead peak limiting
+- Transient shaping
 
 ## Processing: performance
 
@@ -155,9 +183,6 @@
 - Timing humanization
 - Pitch drift
 - Vibrato
+- Velocity-to-timbre response
 
-## Arrangement and editing
-
-Electronic beds use a layered sub and mid-bass foundation, detuned chord stacks, arpeggios, pads, a high layer and granular texture. Intro, build, breakdown and drop sections automate level and filtering while preserving the selected hook. Kick sidechain is retained when auditioning isolated instruments through a silent kick trigger.
-
-The EDM focus button sets the Electronic mix to 100% and score fidelity to 0%. The URL parameter edm=1 opens this focus directly. Stored score at 100% keeps the reference piano rendition. These type names cover the implemented palette; individual patches and combinations remain editable.
+New arrangements use genre-specific instrument treatments and mix profiles. EDM Focus uses recorded chops, modeled vocal and bass patches, restrained chord layers, and bass-house, garage or breaks drums. The original score mode preserves its reference rendition.
