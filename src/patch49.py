@@ -55,9 +55,9 @@ s=s.replace(a7,
 "while(kits.size>KIT_CAP){const old=kits.keys().next().value;if(old===n)break;kits.delete(old)}return p}")
 
 # each pool reported on its own, including the WAVs held by finished tracks
-a8="PBC={mem:()=>({cacheMB:+(cacheBytes/1048576).toFixed(1),cachedNotes:cache.size,banks:banks.size}),"
+a8="PBC={stat:()=>Object.assign({},PBCSTAT),yield:yieldTask,mem:()=>({cacheMB:+(cacheBytes/1048576).toFixed(1),cachedNotes:cache.size,banks:banks.size}),"
 one(a8,'mem')
-s=s.replace(a8,"PBC={mem:()=>({cacheMB:+(cacheBytes/1048576).toFixed(1),cachedNotes:cache.size,banks:banks.size,"
+s=s.replace(a8,"PBC={stat:()=>Object.assign({},PBCSTAT),yield:yieldTask,mem:()=>({cacheMB:+(cacheBytes/1048576).toFixed(1),cachedNotes:cache.size,banks:banks.size,"
 "bankMB:+(bankTotal/1048576).toFixed(1),kits:kits.size,"
 "wavMB:+((typeof globalThis.__PBCWAV==='function'?globalThis.__PBCWAV()||0:0)/1048576).toFixed(1)}),")
 io.open(p,'w',encoding='utf-8').write(s);print('patch49 ok')

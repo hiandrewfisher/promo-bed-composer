@@ -149,6 +149,16 @@ const SUST=new Set(['organ','bow','ens','solo','pipe','reed','brass','pad','synp
 /* ---------- sample library ---------- */
 let DC=null;const LOCAL={hq:'sf/hq/',rx:'sf/rx/',kit:'sf/kit/',sy:'sf/sy/'};
 async function grab(dir,name){const r=await fetch(LOCAL[dir]+name+'.json');if(!r.ok)throw Error('Could not load '+name);return r.json()}
+const PBCSTAT={ctxMade:0,ctxStarted:0,ctxDone:0,yields:0,watchSet:0,watchCleared:0,visAdd:0,visRemove:0};
+const YQ=[];let YCH=null;
+const yieldTask=()=>new Promise(r=>{
+  try{
+    if(!YCH){YCH=new MessageChannel();
+      YCH.port1.onmessage=()=>{const n=YQ.length;for(let i=0;i<n;i++){const fn=YQ.shift();try{fn()}catch(e){}}};
+      YCH.port1.start&&YCH.port1.start()}
+    YQ.push(r);if(YQ.length===1)YCH.port2.postMessage(0);
+  }catch(e){setTimeout(r,0)}
+});
 const banks=new Map();
 function bank(dir,name){const k=dir+'/'+name;let p=banks.get(k);if(!p){p=grab(dir,name).then(j=>({keys:Object.keys(j.samples).map(Number).sort((a,b)=>a-b),b64:j.samples,tune:j.tune||{}}));banks.set(k,p);p.catch(()=>banks.delete(k))}return p}
 const kits=new Map();function kitFile(n){let p=kits.get(n);if(!p){p=grab('kit',n);kits.set(n,p);p.catch(()=>kits.delete(n))}return p}
@@ -1465,7 +1475,8 @@ const mhp=C.createBiquadFilter();mhp.type='highpass';mhp.frequency.value=24;cons
  // channel strip: gain, filters, EQ, compression, parallel saturation, modulation, width, sends
  const DIPS=[],strips={},PUMP=[],DYN={},VIB={},EXPR=[],SWF=[],FXD=[],MUSIC=new Set(['keys','pulse','riff','pad','pad2','lead','color','counter','dbl']);
  const DUCKD={},VDK=[],PRES=[],CLEANUP=[];let PENDING=null,STARTED=false;
- const yieldTask=()=>new Promise(r=>{try{const mc=new MessageChannel();mc.port1.onmessage=()=>r();mc.port2.postMessage(0)}catch(e){setTimeout(r,0)}});const strip=(name,spec,toward)=>{const k=name;if(strips[k])return strips[k];const nb=name.replace(/2$/,''),st=merge(STRIP[name]||STRIP[nb]||STRIP.perc,spec),inp=C.createGain();if(LAY[name]!=null){st.pan=LAY[name];st.spread=Math.min(st.spread||0,.3)}const cv0=CARVE[name]||CARVE[nb];let dp=0;if(full&&!/^(drums|perc|fx|mech|bass|sub)$/.test(nb)){let hh=2166136261;for(const ch of nb+o.seed)hh=Math.imul(hh^ch.charCodeAt(0),16777619);const D0={lead:.12,counter:.35,keys:.32,pulse:.45,riff:.42,color:.62,pad:.72,dbl:.5}[nb]??.4;dp=clamp(D0+(((hh>>>0)%1000)/1000-.5)*.3,0,1)*((o.song||{}).depth??1);st.pre=(st.pre||.015)+dp*.024;st.verb=st.verb&&st.verb.s?{...st.verb,s:Math.min(.6,st.verb.s+dp*.1)}:{t:'room',s:.05+dp*.12};st.eq=(st.eq||[]).concat([['hs',7000,-dp*3.5]])}if(cv0){if(cv0.hpf)st.hpf=Math.max(st.hpf||0,cv0.hpf);st.eq=(st.eq||[]).concat(cv0.eq||[])}if(full&&BAL.cut[name])st.eq=(st.eq||[]).concat(BAL.cut[name]);const ux=o.ch&&(o.ch[name]||o.ch[nb]);if(ux){if(ux.pan!=null)st.pan=ux.pan;if(ux.sep!=null){st.sep=ux.sep;st.width=(st.width||0)*ux.sep;st.spread=(st.spread||0)*ux.sep}if(ux.verb!=null)st.verb={t:ux.space||(st.verb&&st.verb.t)||'room',s:ux.verb};if(ux.dly!=null)st.dly=ux.dly;if(ux.hpf!=null)st.hpf=ux.hpf;if(ux.lpf!=null)st.lpf=ux.lpf<19900?ux.lpf:0;if(ux.sat!=null)st.sat=ux.sat;const ue=[];if(ux.low)ue.push(['ls',180,ux.low]);if(ux.mid)ue.push(['p',ux.midF||1200,ux.mid,1]);if(ux.high)ue.push(['hs',6000,ux.high]);st.eq=(st.eq||[]).concat(ue);if(ux.gain&&full)st.lvl=(st.lvl??.5)*db(ux.gain)}inp.gain.value=(st.lvl??.5)*(full?db(BAL.g[name]||0):1);let nd=inp;
+ PBCSTAT.ctxMade++;
+const strip=(name,spec,toward)=>{const k=name;if(strips[k])return strips[k];const nb=name.replace(/2$/,''),st=merge(STRIP[name]||STRIP[nb]||STRIP.perc,spec),inp=C.createGain();if(LAY[name]!=null){st.pan=LAY[name];st.spread=Math.min(st.spread||0,.3)}const cv0=CARVE[name]||CARVE[nb];let dp=0;if(full&&!/^(drums|perc|fx|mech|bass|sub)$/.test(nb)){let hh=2166136261;for(const ch of nb+o.seed)hh=Math.imul(hh^ch.charCodeAt(0),16777619);const D0={lead:.12,counter:.35,keys:.32,pulse:.45,riff:.42,color:.62,pad:.72,dbl:.5}[nb]??.4;dp=clamp(D0+(((hh>>>0)%1000)/1000-.5)*.3,0,1)*((o.song||{}).depth??1);st.pre=(st.pre||.015)+dp*.024;st.verb=st.verb&&st.verb.s?{...st.verb,s:Math.min(.6,st.verb.s+dp*.1)}:{t:'room',s:.05+dp*.12};st.eq=(st.eq||[]).concat([['hs',7000,-dp*3.5]])}if(cv0){if(cv0.hpf)st.hpf=Math.max(st.hpf||0,cv0.hpf);st.eq=(st.eq||[]).concat(cv0.eq||[])}if(full&&BAL.cut[name])st.eq=(st.eq||[]).concat(BAL.cut[name]);const ux=o.ch&&(o.ch[name]||o.ch[nb]);if(ux){if(ux.pan!=null)st.pan=ux.pan;if(ux.sep!=null){st.sep=ux.sep;st.width=(st.width||0)*ux.sep;st.spread=(st.spread||0)*ux.sep}if(ux.verb!=null)st.verb={t:ux.space||(st.verb&&st.verb.t)||'room',s:ux.verb};if(ux.dly!=null)st.dly=ux.dly;if(ux.hpf!=null)st.hpf=ux.hpf;if(ux.lpf!=null)st.lpf=ux.lpf<19900?ux.lpf:0;if(ux.sat!=null)st.sat=ux.sat;const ue=[];if(ux.low)ue.push(['ls',180,ux.low]);if(ux.mid)ue.push(['p',ux.midF||1200,ux.mid,1]);if(ux.high)ue.push(['hs',6000,ux.high]);st.eq=(st.eq||[]).concat(ue);if(ux.gain&&full)st.lvl=(st.lvl??.5)*db(ux.gain)}inp.gain.value=(st.lvl??.5)*(full?db(BAL.g[name]||0):1);let nd=inp;
   const f=(type,fr,g,q)=>{const b=C.createBiquadFilter();b.type=type;b.frequency.value=fr;if(g!=null)b.gain.value=g;if(q!=null)b.Q.value=q;nd.connect(b);nd=b;return b};
   if(st.hpf)f('highpass',st.hpf,null,.7);if(st.lpf)f('lowpass',st.lpf,null,.6);for(const[t,fr,g,q]of st.eq||[])f(t=='ls'?'lowshelf':t=='hs'?'highshelf':'peaking',fr,g,q||1);
   if(['pad','pad2','keys','pulse'].includes(name)){DIPS.push(f('peaking',250,0,1))}
@@ -1553,26 +1564,27 @@ const mhp=C.createBiquadFilter();mhp.type='highpass';mhp.frequency.value=24;cons
    if(wd){clearTimeout(wd);wd=null}
    if(why)try{console.log('[PromoMixer] scheduling the rest of this bed in slices ('+why+')')}catch(e){}
    PENDING=(async()=>{let n=0;
-     while(!slice()){n++;await yieldTask();if(n>20000)break}
+     while(!slice()){n++;PBCSTAT.yields++;await yieldTask();if(n>20000)break}
+     Qn.length=0;
      flushDone=true;wake()})();
    return PENDING};
   const hidden=typeof document!=='undefined'&&document.hidden;
   if(hidden)flushAll('panel hidden');
   else{
    onHide=()=>{if(document.hidden)flushAll('panel hidden mid-render')};
-   try{document.addEventListener('visibilitychange',onHide)}catch(e){}
+   try{document.addEventListener('visibilitychange',onHide);PBCSTAT.visAdd++}catch(e){}
    for(let w=1;w<L-.2;w++){const at=Math.round((w-.05)*SR/128)*128/SR;
     C.suspend(at).then(()=>{if(flushed){if(flushDone)wake();return}sched(w+1.1);wake()},()=>{flushAll('suspend rejected')})}
-   wd=setTimeout(()=>flushAll('render stalled'),Math.max(20000,L*1600));
+   wd=setTimeout(()=>flushAll('render stalled'),Math.max(20000,L*1600));PBCSTAT.watchSet++;
   }
-  CLEANUP.push(()=>{if(onHide){try{document.removeEventListener('visibilitychange',onHide)}catch(e){}onHide=null}if(wd){clearTimeout(wd);wd=null}});
+  CLEANUP.push(()=>{if(onHide){try{document.removeEventListener('visibilitychange',onHide);PBCSTAT.visRemove++}catch(e){}onHide=null}if(wd){clearTimeout(wd);PBCSTAT.watchCleared++;wd=null}});
  }
  // interplay: reverb returns dip 3 dB while the lead plays; chord instruments clear 250 Hz on each bass note
  {const st=.025,Nn=Math.ceil(L/st)+1,act=new Float32Array(Nn);for(const n of c.notes)if(n.r.name=='lead'){for(let i=Math.floor(n.t/st);i<Math.min(Nn,(n.t+n.dur)/st);i++)act[i]=1}let e=0;const cv2=new Float32Array(Nn);for(let i=0;i<Nn;i++){const tg=act[i]?1:0;e+=(tg-e)*(tg>e?.5:.08);cv2[i]=e}const vact=new Float32Array(Nn);if(A.act&&A.act.length){const hh=A.actHop||.05;let ee=0;for(let i=0;i<Nn;i++){const tt=i*st-c.offset,v=tt<0||tt>=A.len?0:A.act[Math.min(A.act.length-1,Math.floor(tt/hh))]||0;ee+=(v-ee)*(v>ee?.3:.05);vact[i]=ee}}for(const g of FXD)g.gain.value=1;for(const[g,d]of VDK)g.gain.setValueCurveAtTime(vact.map(x=>1-d*x),0,L);for(const[g,lv]of RET)g.gain.setValueCurveAtTime(cv2.map(x=>lv*(1-.29*x)),0,L);
   const bt=c.notes.filter(n=>n.r.name=='bass').map(n=>n.t);for(const d of DIPS)for(const t of bt){d.gain.setValueAtTime(0,Math.max(0,t-.005));d.gain.linearRampToValueAtTime(-2,t+.012);d.gain.setTargetAtTime(0,t+.03,.12)}}
  if(PENDING)try{await PENDING}catch(e){}
- STARTED=true;
- try{return await C.startRendering()}finally{STARTED=false;for(const fn of CLEANUP)try{fn()}catch(e){}CLEANUP.length=0;PENDING=null}};
+ STARTED=true;PBCSTAT.ctxStarted++;
+ try{return await C.startRendering()}finally{STARTED=false;for(const fn of CLEANUP)try{fn()}catch(e){}CLEANUP.length=0;PENDING=null;PBCSTAT.ctxDone++}};
  let BAL={g:{},cut:{}};const CHAN={};
  if(SN.length>1){onStep&&onStep('Balancing '+SN.length+' parts');try{BAL=balance(await graph(false),SN,S)}catch(e){console.warn('balance',e)}}
  onStep&&onStep('Rendering the mix');const raw=await graph(true,BAL);onStep&&onStep('Mastering');const out=await master(raw,M2);c.meta.mix={g:BAL.g,lv:BAL.lv,want:BAL.want,cut:BAL.cut};Object.assign(c.meta.song,{pump:+(S.pump||0).toFixed(2),width:+M2.side.toFixed(2),warmth:+M2.sat.toFixed(2),air:+M2.air.toFixed(1),glue:+clamp((-8-M2.glue[0])/20,0,1).toFixed(2),loud:+M2.loud.toFixed(1),low:(o.song||{}).low||0,lowmid:(o.song||{}).lowmid||0,mid:(o.song||{}).mid||0,presence:(o.song||{}).presence||0,high:(o.song||{}).high||0,feel:(o.song||{}).feel??1,art:(o.song||{}).art??1,variety:(o.song||{}).variety??1,varied:S.varied||null,blendStyle:(o.song||{}).blendStyle??.6,slots:S.slots||null,expr:(o.song||{}).expr??1,depth:(o.song||{}).depth??1,hrtf:(o.song||{}).hrtf??0,midDip:(o.song||{}).midDip??2,maxParts:(o.song||{}).maxParts??7,thin:(o.song||{}).thin??1,tame:(o.song||{}).tame??1,tameAt:(o.song||{}).tameAt??0,harm:(o.song||{}).harm??1,rr:(o.song||{}).rr??1,drift:M2.drift,monoHz:M2.monoHz,subHz:M2.subHz,pocket:M2.pocket,endCap:M2.endCap,vWeight:M2.vW});c.meta.chan=CHAN;c.meta.detail&&(c.meta.detail.mixBalance=c.meta.mix,c.meta.detail.master=M2,c.meta.detail.channels=CHAN);c.meta.nNotes=[c.notes.length,c.hits.length];
@@ -1595,5 +1607,5 @@ for(const[id,n,par,bpm,modes,color,prog,add,drop,feel,sw,d]of SUBG){const P0=G[p
   if(Object.keys(sg).length)SIG[id]=sg}
  if(PROGS[prog]&&!g.prog)g.prog=prog}
 const GORD=['campfire','drivepop','brooklyn','anthem','funk','epic','electronic','house','deephouse','techno','trance','synthwave','futurebass','dnb','downtempo'],GENRES=[...GORD,...Object.keys(G).filter(k=>!GORD.includes(k))].map(k=>({id:k,name:G[k].n,desc:G[k].d}));
-window.PBC={mem:()=>({cacheMB:+(cacheBytes/1048576).toFixed(1),cachedNotes:cache.size,banks:banks.size}),grooves:Object.keys(GROOVES),kits:['studio','pi','hand','orch','tabla','tr808','tr909','tr707','dmx','sp12','linn9k','cr78','tr606'],render,analyze,GENRES,G,ADJ,INS,SIG,GFAM,blendG,pickPiece,pickAny,abcToPiece,sessionTunes,session:()=>SESS?SESS.length:0,loadSessionFile:sessionFromFile,preloadSession:()=>{if(!LIBI)libJSON('index.json').then(x=>{LIBI=x}).catch(()=>{});return sessionTunes().catch(e=>{console.warn('[PromoMixer] The Session tunes unavailable',e);return null})},_compose:compose};
+window.PBC={stat:()=>Object.assign({},PBCSTAT),yield:yieldTask,mem:()=>({cacheMB:+(cacheBytes/1048576).toFixed(1),cachedNotes:cache.size,banks:banks.size}),grooves:Object.keys(GROOVES),kits:['studio','pi','hand','orch','tabla','tr808','tr909','tr707','dmx','sp12','linn9k','cr78','tr606'],render,analyze,GENRES,G,ADJ,INS,SIG,GFAM,blendG,pickPiece,pickAny,abcToPiece,sessionTunes,session:()=>SESS?SESS.length:0,loadSessionFile:sessionFromFile,preloadSession:()=>{if(!LIBI)libJSON('index.json').then(x=>{LIBI=x}).catch(()=>{});return sessionTunes().catch(e=>{console.warn('[PromoMixer] The Session tunes unavailable',e);return null})},_compose:compose};
 })();
