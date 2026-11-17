@@ -45,3 +45,43 @@ From the repository root with Node installed:
 - `node tests/verify-score-engine.cjs`: stored-score endpoint, slider differences, deterministic composition, 128 unique sources and persistent source history.
 
 Browser tests require Playwright and Chrome; set PLAYWRIGHT_PATH if the package is installed outside the standard module path. They verify generated waveforms, repeat playback, effect amplitude, longer tails, stereo energy, mobile layout and the restricted-preview folder workflow. Third-party sample and score credits appear in the app. Their original licenses apply. Tonal's MIT license is in vendor/TONAL-LICENSE.txt.
+
+## Run it locally
+
+The page fetches its instrument banks and scores over HTTP, so opening
+`index.html` from the filesystem will not work — `file://` blocks the
+requests. Serve the repo root instead:
+
+```bash
+git clone https://github.com/hiandrewfisher/promo-bed-composer
+cd promo-bed-composer
+python3 -m http.server 8765
+```
+
+Then open `http://localhost:8765/index.html`. Nothing else is needed: no build
+step, no npm install, no API key. Voice recordings never leave the browser.
+
+Running it this way, rather than inside a hosted artifact frame, gives the
+renderer the whole main thread. Bed generation is main-thread work, so it is
+noticeably faster in a tab of its own.
+
+## Layout
+
+| path | what it is |
+|---|---|
+| `index.html` | the whole app, generated from `src/` — see `src/BUILD.md` |
+| `src/` | engine sources, build scripts and the `smoke.py` build gate |
+| `sf/hq`, `sf/rx`, `sf/sy` | instrument banks, base64 MP3 in JSON, one file per instrument |
+| `sf/kit` | drum kits |
+| `lib/` | the public-domain score library the composer arranges from |
+| `scripts/`, `tests/` | the earlier discovery and verification tooling |
+
+## Crash and performance logging
+
+The page writes breadcrumbs to `localStorage` as it works — each milestone with
+the JS heap size and the decoded-sample cache size attached. If a tab is killed
+mid-render those writes survive, and the next load prints the dead run's last
+breadcrumbs. In the console:
+
+- `PBCCRASH()` — the previous (crashed) run plus the current one, copied to the clipboard
+- `PBCLOG()` — the current run only
