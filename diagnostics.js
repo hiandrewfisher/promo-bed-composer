@@ -105,11 +105,25 @@
  var SNAPS=[], SNAPMAX=2000;
  function heap(){ try{ var m=performance.memory; return m?{u:Math.round(m.usedJSHeapSize/1048576),
    a:Math.round(m.totalJSHeapSize/1048576), l:Math.round(m.jsHeapSizeLimit/1048576)}:null }catch(e){ return null } }
+ var NATIVE=null,natBusy=false;
+ function native(){
+   try{
+     if(natBusy||!performance.measureUserAgentSpecificMemory||!self.crossOriginIsolated) return NATIVE;
+     natBusy=true;
+     performance.measureUserAgentSpecificMemory().then(function(m){
+       natBusy=false;
+       var by={};(m.breakdown||[]).forEach(function(b){ var t=(b.types||['other']).join('+');
+         by[t]=(by[t]||0)+b.bytes });
+       NATIVE={totalMB:+(m.bytes/1048576).toFixed(1),by:by};
+     },function(){ natBusy=false });
+   }catch(e){ natBusy=false }
+   return NATIVE;
+ }
  function engine(){ try{ return window.PBC&&PBC.mem?PBC.mem():null }catch(e){ return null } }
  function estat(){ try{ return window.PBC&&PBC.stat?PBC.stat():null }catch(e){ return null } }
  function snapshot(){
    if(!ON) return;
-   var s={ t:Date.now()-T0, stage:STAGE, heap:heap(), engine:engine(), stat:estat(),
+   var s={ t:Date.now()-T0, stage:STAGE, heap:heap(), native:native(), engine:engine(), stat:estat(),
            dom:(function(){ try{ return document.getElementsByTagName('*').length }catch(e){ return 0 } })(),
            beds:(function(){ try{ return document.querySelectorAll('.track').length }catch(e){ return 0 } })(),
            res:{} };
