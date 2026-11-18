@@ -1560,8 +1560,8 @@ const strip=(name,spec,toward)=>{const k=name;if(strips[k])return strips[k];cons
     if((((performance&&performance.now)?performance.now():Date.now())-t0)>10)return false}
    return true};
   const flushAll=why=>{if(flushed)return PENDING;flushed=true;
-   if(onHide){try{document.removeEventListener('visibilitychange',onHide)}catch(e){}onHide=null}
-   if(wd){clearTimeout(wd);wd=null}
+   if(onHide){try{document.removeEventListener('visibilitychange',onHide);PBCSTAT.visRemove++}catch(e){}onHide=null}
+   if(wd){clearTimeout(wd);PBCSTAT.watchCleared++;wd=null}
    if(why)try{console.log('[PromoMixer] scheduling the rest of this bed in slices ('+why+')')}catch(e){}
    PENDING=(async()=>{let n=0;
      while(!slice()){n++;PBCSTAT.yields++;await yieldTask();if(n>20000)break}
