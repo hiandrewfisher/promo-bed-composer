@@ -1559,37 +1559,22 @@ const strip=(name,spec,toward)=>{const k=name;if(strips[k])return strips[k];cons
    while(qi<Qn.length){const[,k,x]=Qn[qi++];try{k?playH(x):playN(x)}catch(e){console.error('[PromoMixer] note',e)}
     if((((performance&&performance.now)?performance.now():Date.now())-t0)>10)return false}
    return true};
-  const WIN=8;                       // seconds of audio laid down per step
-  let upto=0,stepping=false;
-  const sliceTo=u=>{const t0=(performance&&performance.now)?performance.now():Date.now();
-   while(qi<Qn.length&&Qn[qi][0]<u){const[,k,x]=Qn[qi++];try{k?playH(x):playN(x)}catch(e){console.error('[PromoMixer] note',e)}
-    if((((performance&&performance.now)?performance.now():Date.now())-t0)>10)return false}
-   return true};
-  const step=why=>{
-   if(stepping)return PENDING;stepping=true;
-   if(wd){clearTimeout(wd);PBCSTAT.watchCleared++;wd=null}
-   upto=Math.max(upto,(Qn[qi]?Qn[qi][0]:0))+WIN;
-   if(why)try{console.log('[PromoMixer] laying down the next '+WIN+'s of this bed ('+why+')')}catch(e){}
-   PENDING=(async()=>{let n=0;
-     while(!sliceTo(upto)){n++;PBCSTAT.yields++;await yieldTask();if(n>20000)break}
-     stepping=false;
-     if(qi>=Qn.length){Qn.length=0;flushDone=true;flushed=true}
-     else if(STARTED){ // one suspend to continue; the watchdog covers it never firing
-       try{C.suspend(Math.round(Math.min(upto-1.5,L-.05)*SR/128)*128/SR).then(()=>step(),()=>{})}catch(e){}
-       wd=setTimeout(()=>step('still stalled'),Math.max(12000,WIN*1500));PBCSTAT.watchSet++;
-     }
-     wake()})();
-   return PENDING};
-  const flushAll=why=>{
+  const flushAll=why=>{if(flushed)return PENDING;flushed=true;
    if(onHide){try{document.removeEventListener('visibilitychange',onHide);PBCSTAT.visRemove++}catch(e){}onHide=null}
-   return step(why)};
+   if(wd){clearTimeout(wd);PBCSTAT.watchCleared++;wd=null}
+   if(why)try{console.log('[PromoMixer] scheduling the rest of this bed in slices ('+why+')')}catch(e){}
+   PENDING=(async()=>{let n=0;
+     while(!slice()){n++;PBCSTAT.yields++;await yieldTask();if(n>20000)break}
+     Qn.length=0;
+     flushDone=true;wake()})();
+   return PENDING};
   const hidden=typeof document!=='undefined'&&document.hidden;
   if(hidden)flushAll('panel hidden');
   else{
    onHide=()=>{if(document.hidden)flushAll('panel hidden mid-render')};
    try{document.addEventListener('visibilitychange',onHide);PBCSTAT.visAdd++}catch(e){}
    for(let w=1;w<L-.2;w++){const at=Math.round((w-.05)*SR/128)*128/SR;
-    C.suspend(at).then(()=>{if(flushed||stepping||upto){if(flushDone)wake();return}sched(w+1.1);wake()},()=>{flushAll('suspend rejected')})}
+    C.suspend(at).then(()=>{if(flushed){if(flushDone)wake();return}sched(w+1.1);wake()},()=>{flushAll('suspend rejected')})}
    wd=setTimeout(()=>flushAll('render stalled'),Math.max(20000,L*1600));PBCSTAT.watchSet++;
   }
   CLEANUP.push(()=>{if(onHide){try{document.removeEventListener('visibilitychange',onHide);PBCSTAT.visRemove++}catch(e){}onHide=null}if(wd){clearTimeout(wd);PBCSTAT.watchCleared++;wd=null}});
