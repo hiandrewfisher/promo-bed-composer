@@ -270,7 +270,7 @@ function bank(dir,name){
   else{banks.delete(k);banks.set(k,p)}
   return p}
 const kits=new Map(),KIT_CAP=6;function kitFile(n){let p=kits.get(n);if(p){kits.delete(n);kits.set(n,p);return p}p=grab('kit',n);kits.set(n,p);p.catch(()=>{if(kits.get(n)===p)kits.delete(n)});while(kits.size>KIT_CAP){const old=kits.keys().next().value;if(old===n)break;kits.delete(old)}return p}
-const cache=new Map(),order=[],CAP=900,BYTE_CAP=(function(){try{const l=performance.memory&&performance.memory.jsHeapSizeLimit;if(l)return Math.max(32,Math.min(48,Math.round(l/1048576*0.025)))*1048576}catch(e){}return 48*1048576})(),bufBytes=new Map();let cacheBytes=0;
+const cache=new Map(),order=[],CAP=900,BYTE_CAP=(function(){try{const l=performance.memory&&performance.memory.jsHeapSizeLimit;if(l)return Math.max(48,Math.min(96,Math.round(l/1048576*0.05)))*1048576}catch(e){}return 96*1048576})(),bufBytes=new Map();let cacheBytes=0;
 function drop(id){if(cache.delete(id)){cacheBytes-=bufBytes.get(id)||0;bufBytes.delete(id)}}
 function trimCache(){while(cacheBytes>BYTE_CAP&&order.length){const id=order.shift();if(cache.has(id))drop(id)}}
 function remember(id,p){if(cache.has(id))drop(id);cache.set(id,p);order.push(id);p.then(b=>{if(cache.get(id)!==p)return;try{const n=b.length*b.numberOfChannels*4;cacheBytes-=bufBytes.get(id)||0;bufBytes.set(id,n);cacheBytes+=n;trimCache()}catch(e){}},()=>{if(cache.get(id)===p)drop(id)});while(order.length>CAP){const old=order.shift();if(cache.has(old))drop(old)}return p}
