@@ -2569,7 +2569,7 @@ function fxEditor(t){if(!t.edit)t.edit=JSON.parse(JSON.stringify(t.chan));const 
   d.append(ff);box.append(d)}
  return box}
 $('compose').onclick=()=>composeNew(8);$('cancelQ').onclick=()=>{const n=s.queue.length;s.queue.length=0;s.total=s.done+(s.working?1:0);progress(n?`Cancelled ${n} waiting bed${n>1?'s':''}`:'Nothing waiting');setStatus(n?`Cancelled ${n} waiting bed${n>1?'s':''}`:'Nothing in the queue')};
-function ratingsJSON(){const beds=s.tracks.filter(t=>t.stars>0).map(t=>({
+async function ratingsJSON(){const beds=[];for(const track of s.tracks.filter(t=>t.stars>0)){let t=track;if(track.parked){try{const dir=await opfs(),f=await (await dir.getFileHandle(track.parked)).getFile();t={...track,...JSON.parse(await f.text())}}catch(e){console.warn('Ratings metadata read failed',track.id,e)}}beds.push({diagnosticsAvailable:!!t.detail,
   stars:t.stars,meaning:STAR_MEAN[t.stars],name:t.name,id:t.id||null,
   reasons:Object.keys(t.why||{}).filter(k=>t.why[k]),
   reasonsBad:Object.keys(t.why||{}).filter(k=>t.why[k]&&!WHY_POLARITY[k]),
@@ -2592,7 +2592,7 @@ function ratingsJSON(){const beds=s.tracks.filter(t=>t.stars>0).map(t=>({
   instrumentsAsRendered:t.chan||null,
   songAsRendered:t.songDef||null,
   userEdits:{instruments:t.ch||null,song:t.song||null,keepIns:t.keepIns||null,avoidIns:t.avoidIns||null}
-}));
+});}
 const byStar={};for(let i=1;i<=5;i++)byStar[i]=beds.filter(b=>b.stars===i).length;
 return{app:'Promo Bed Composer',exported:new Date().toISOString(),
  scale:{1:STAR_MEAN[1],2:STAR_MEAN[2],3:STAR_MEAN[3],4:STAR_MEAN[4],5:STAR_MEAN[5]},
@@ -2601,7 +2601,7 @@ return{app:'Promo Bed Composer',exported:new Date().toISOString(),
  counts:{rated:beds.length,byStar,reasonTally:(function(){const o={};for(const b of beds)for(const r of b.reasons)o[r]=(o[r]||0)+1;return o})()},
  session:{genreWeights:s.gw||null,scoreSlider:s.src??null,voiceLength:s.voiceLength??null,totalBeds:s.tracks.length},
  beds}}
-$('ratings').onclick=async()=>{await unparkAll(s.tracks.filter(t=>t.stars>0));const j=ratingsJSON();if(!j.beds.length){setStatus('Rate some beds first — tap 1 to 5 stars on each bed');return}try{await deliver([{name:'bed-ratings-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.json',data:new TextEncoder().encode(JSON.stringify(j,null,1))}]);setStatus('Saved ratings for '+j.counts.rated+' bed'+(j.counts.rated==1?'':'s'))}catch(e){setStatus(e&&e.code==='declined'?'Save cancelled':'Export failed: '+(e&&e.message||e))}};
+$('ratings').onclick=async()=>{const j=await ratingsJSON();if(!j.beds.length){setStatus('Rate some beds first — tap 1 to 5 stars on each bed');return}try{await deliver([{name:'bed-ratings-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.json',data:new TextEncoder().encode(JSON.stringify(j,null,1))}]);setStatus('Saved ratings for '+j.counts.rated+' bed'+(j.counts.rated==1?'':'s'))}catch(e){setStatus(e&&e.code==='declined'?'Save cancelled':'Export failed: '+(e&&e.message||e))}};
 
 (async()=>{setStatus('Add a voice read to begin');return;const sr=44100,L=17,C=new OfflineAudioContext(2,sr*L,sr),R=(a=>()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296})(11),o=C.createOscillator(),f1=C.createBiquadFilter(),f2=C.createBiquadFilter(),g=C.createGain(),lp=C.createBiquadFilter(),ng=C.createGain(),hp=C.createBiquadFilter(),n=C.createBufferSource(),nb=C.createBuffer(1,sr*L,sr),z=nb.getChannelData(0);for(let i=0;i<z.length;i++)z[i]=Math.random()*2-1;n.buffer=nb;o.type='sawtooth';f1.type=f2.type='bandpass';f1.Q.value=5;f2.Q.value=7;lp.frequency.value=3500;hp.type='highpass';hp.frequency.value=3500;o.connect(f1).connect(g);o.connect(f2).connect(g);g.connect(lp).connect(C.destination);n.connect(hp).connect(ng).connect(C.destination);g.gain.value=0;ng.gain.value=0;let t=.7;o.frequency.setValueAtTime(140,0);while(t<L-1.5){const w=3+R()*5|0;let f=150+R()*25;for(let i=0;i<w;i++){const sy=1+R()*3|0;for(let k=0;k<sy;k++){const d=.11+R()*.13;f*=.988;o.frequency.linearRampToValueAtTime(f*(1+R()*.14),t+d/2);f1.frequency.setValueAtTime(320+R()*560,t);f2.frequency.setValueAtTime(1100+R()*1300,t);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.35,t+.03);g.gain.linearRampToValueAtTime(.2,t+d*.7);g.gain.linearRampToValueAtTime(0,t+d);if(R()<.45){ng.gain.setValueAtTime(0,t-.04);ng.gain.linearRampToValueAtTime(.03,t-.025);ng.gain.linearRampToValueAtTime(0,t)}t+=d+.02}t+=.05+R()*.09}t+=.45+R()*.45}o.start();n.start();const buf=await C.startRendering();const dt=new DataTransfer();dt.items.add(new File([wav(buf)],'Demo read (synthetic hum).wav',{type:'audio/wav'}));$('voice').files=dt.files;$('voice').dispatchEvent(new Event('change'))})().catch(e=>setStatus('Add a voice recording to begin'));
 
