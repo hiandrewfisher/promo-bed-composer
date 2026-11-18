@@ -29,8 +29,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
 <p class="sub">Sessions recorded by the bed composer, including ones that ended in a crash. Byte figures are estimates from each object's own shape, not measured native memory.</p>
 <div class="bar">
   <button id="reload">Reload</button>
-  <button id="json">Export JSON</button>
-  <button id="csv">Export CSV</button>
+  <button id="json">Export compact JSON</button>
+  <button id="csv">Export full CSV</button>
   <button id="clear">Clear history</button>
 </div>
 <div id="out"><div class="empty">Reading…</div></div>
@@ -90,8 +90,31 @@ function draw(){
 function dl(name,text,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);
   const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
 $('#reload').onclick=load;
-$('#json').onclick=async()=>{const ev=await all('events');
-  dl('pbc-diagnostics.json',JSON.stringify({sessions:SESS,snaps:SNAPS,events:ev},null,1),'application/json')};
+function compact(){
+ const chosen=[...SESS].sort((a,b)=>b.started-a.started).slice(0,5),sessions=[];
+ let checkpoint=null;try{checkpoint=JSON.parse(localStorage.getItem('pbc.diag.last')||'null')}catch{}
+ for(const meta of chosen){
+ const a=SNAPS[meta.sid]||[],first=a[0],last=a.at(-1),keep=new Set(),resources={},metrics={};
+ if(a.length){keep.add(0);keep.add(a.length-1);for(let i=Math.max(0,a.length-15);i<a.length;i++)keep.add(i);
+ for(let i=0;i<Math.min(40,a.length);i++)keep.add(Math.round(i*(a.length-1)/Math.max(1,Math.min(40,a.length)-1)));
+ const changes=[];for(let i=1;i<a.length;i++)if(a[i].stage!==a[i-1].stage)changes.push(i);
+ for(const i of changes.slice(-20)){keep.add(i);keep.add(i-1)}
+ const track=(obj,k,v,i)=>{if(typeof v!=='number'||!Number.isFinite(v))return;let q=obj[k];if(!q)q=obj[k]={first:v,last:v,min:v,max:v,minAt:a[i].t,maxAt:a[i].t};q.last=v;if(v<q.min){q.min=v;q.minAt=a[i].t}if(v>q.max){q.max=v;q.maxAt=a[i].t}};
+ const flat=(o,p,i)=>{if(!o||typeof o!=='object')return;for(const [k,v] of Object.entries(o)){if(typeof v==='number')track(metrics,p+k,v,i);else if(v&&typeof v==='object'&&!Array.isArray(v))flat(v,p+k+'.',i)}};
+ a.forEach((s,i)=>{flat(s.heap,'heap.',i);flat(s.native,'native.',i);flat(s.engine,'engine.',i);flat(s.stat,'stat.',i);track(metrics,'dom',s.dom,i);track(metrics,'beds',s.beds,i);for(const [k,v] of Object.entries(s.res||{})){const q=resources[k]||=( {} );for(const f of ['out','mb','made','freed','gc','peak','peakMb'])track(q,f,v[f],i)}});
+ const columns=['t','stage','heapMB','nativeMB','dom','beds','audioMB','offline','nodes'];
+ const timeline=[...keep].sort((x,y)=>x-y).map(i=>{const s=a[i],r=s.res||{};return [s.t,s.stage,s.heap?.u??null,s.native?.totalMB??null,s.dom,s.beds,Object.entries(r).filter(([k])=>/AudioBuffer|createBuffer|^node:Buffer$/.test(k)).reduce((n,[,v])=>n+(v.mb||0),0),r.OfflineAudioContext?.out??0,Object.entries(r).filter(([k])=>k.startsWith('node:')).reduce((n,[,v])=>n+(v.out||0),0)]});
+ sessions.push({meta,snapshotCount:a.length,first,last,metrics,resources,columns,timeline});
+ }else sessions.push({meta,snapshotCount:0});
+ }return {format:'pbc-compact-v1',exportedAt:new Date().toISOString(),totalSessions:SESS.length,omittedSessions:Math.max(0,SESS.length-chosen.length),checkpoint,sessions,notes:'Resource counts and bytes are estimates. Unclean exit does not prove a crash. Timeline sampled; extrema computed from every stored snapshot.'}
+}
+async function compactEvents(report){
+ if(!DB)return;
+ await new Promise(resolve=>{const tx=DB.transaction('events','readonly'),idx=tx.objectStore('events').index('sid');
+ for(const s of report.sessions){const counts={},recent=[],important=[];s.events={counts,recent,important};const req=idx.openCursor(IDBKeyRange.only(s.meta.sid));req.onsuccess=()=>{const cur=req.result;if(!cur)return;for(const e of cur.value.e||[]){const key=e.s+':'+e.k;counts[key]=(counts[key]||0)+1;const row=[e.n,e.t,e.s,e.k,e.b,e.id,e.stage];recent.push(row);if(recent.length>30)recent.shift();if(e.s==='|'||/error|crash|worker|offlineaudio/i.test(e.k)){important.push(row);if(important.length>60)important.shift()}}cur.continue()}}
+ tx.oncomplete=tx.onerror=tx.onabort=()=>resolve()});
+}
+$('#json').onclick=async()=>{const btn=$('#json');btn.disabled=true;try{const report=compact();await compactEvents(report);dl('pbc-diagnostics-compact.json',JSON.stringify(report),'application/json')}finally{btn.disabled=false}};
 $('#csv').onclick=()=>{const lines=['session,t_ms,stage,heap_mb,dom,beds,resource,made,freed,collected,outstanding,est_mb'];
   for(const sid in SNAPS)for(const s of SNAPS[sid])for(const k in (s.res||{})){const c=s.res[k];
     lines.push([sid,s.t,s.stage,s.heap?s.heap.u:'',s.dom,s.beds,k,c.made,c.freed,c.gc,c.out,c.mb].join(','))}
