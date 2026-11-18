@@ -20,8 +20,9 @@
 
  /* GC observation: tells an explicit release apart from a collection */
  var FR = null;
- try{ FR = new FinalizationRegistry(function(k){ var c=cat(k); c.gc++; c.out--; }); }catch(e){}
- function watch(obj,k){ if(FR&&obj){ try{ FR.register(obj,k) }catch(e){} } }
+ try{ FR = new FinalizationRegistry(function(h){ var c=cat(h.k); c.gc++; c.out--;
+   if(h.b) c.bytes-=h.b; }); }catch(e){}
+ function watch(obj,k,bytes){ if(FR&&obj){ try{ FR.register(obj,{k:k,b:bytes||0}) }catch(e){} } }
 
  /* ---- event ring ------------------------------------------------------ */
  var EV = [], EVMAX = 4000, SEQ = 0;
@@ -36,7 +37,7 @@
  function wrapCtor(scope,name,key,sizeOf){
    var C = scope[name]; if(!C) return;
    function P(){ var o = new (Function.prototype.bind.apply(C,[null].concat([].slice.call(arguments))));
-     try{ made(key, sizeOf?sizeOf(o,arguments):0); watch(o,key); }catch(e){}
+     try{ var _b = sizeOf?sizeOf(o,arguments):0; made(key,_b); watch(o,key,_b); }catch(e){}
      return o; }
    P.prototype = C.prototype; try{ scope[name]=P }catch(e){}
  }
@@ -48,9 +49,9 @@
  wrapCtor(window,'MessageChannel','MessageChannel');
  wrapCtor(window,'AudioBuffer','AudioBuffer',bufBytes);
  try{ var B=window.Blob; function PB(parts,opt){ var b=new B(parts,opt);
-   made('Blob', b.size); watch(b,'Blob'); return b } PB.prototype=B.prototype; window.Blob=PB; }catch(e){}
+   made('Blob', b.size); watch(b,'Blob',b.size); return b } PB.prototype=B.prototype; window.Blob=PB; }catch(e){}
  try{ var F=window.File; function PF(parts,name,opt){ var f=new F(parts,name,opt);
-   made('File(WAV)', f.size); watch(f,'File(WAV)'); return f } PF.prototype=F.prototype; window.File=PF; }catch(e){}
+   made('File(WAV)', f.size); watch(f,'File(WAV)',f.size); return f } PF.prototype=F.prototype; window.File=PF; }catch(e){}
 
  /* audio nodes, by type, plus their params */
  ['BaseAudioContext','AudioContext','OfflineAudioContext'].forEach(function(cn){
@@ -61,14 +62,14 @@
      if(typeof orig!=='function') return;
      try{ proto[m] = function(){ var n = orig.apply(this,arguments);
        try{ var k='node:'+m.slice(6);
-         made(k, m==='createBuffer' ? bufBytes(n) : 0); watch(n,k);
+         var _nb = m==='createBuffer' ? bufBytes(n) : 0; made(k,_nb); watch(n,k,_nb);
        }catch(e){}
        return n } }catch(e){}
    });
    if(proto.decodeAudioData){ var dd=proto.decodeAudioData;
      try{ proto.decodeAudioData=function(){ made('decode:pending');
        var r = dd.apply(this,arguments);
-       if(r&&r.then) return r.then(function(b){ freed('decode:pending'); made('AudioBuffer',bufBytes(b)); watch(b,'AudioBuffer'); return b },
+       if(r&&r.then) return r.then(function(b){ freed('decode:pending'); var _db=bufBytes(b); made('AudioBuffer',_db); watch(b,'AudioBuffer',_db); return b },
                                    function(e){ freed('decode:pending'); throw e });
        return r } }catch(e){} }
  });
