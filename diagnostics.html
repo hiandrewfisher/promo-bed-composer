@@ -1,0 +1,103 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bed Composer Diagnostics</title>
+<style>
+:root{--bg:#f7f6f3;--fg:#1a1915;--mut:#6b675e;--line:#dcd8cf;--card:#fff;--acc:#2f5fd8;--bad:#b3261e}
+:root:not([data-theme="light"]){@media (prefers-color-scheme:dark){}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171613;--fg:#ece9e2;--mut:#9a958a;--line:#302e29;--card:#1f1e1a;--acc:#8ab0ff;--bad:#ff8a80}}
+:root[data-theme="dark"]{--bg:#171613;--fg:#ece9e2;--mut:#9a958a;--line:#302e29;--card:#1f1e1a;--acc:#8ab0ff;--bad:#ff8a80}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:24px 16px 64px}
+.wrap{max-width:1040px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+p.sub{color:var(--mut);margin:0 0 20px}
+button{font:inherit;padding:7px 13px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;cursor:pointer}
+button:hover{border-color:var(--acc);color:var(--acc)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 10px;font-weight:600}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:3px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mut);font-weight:500;font-size:12px}
+tr.grow td{color:var(--bad);font-weight:600}
+.meta{color:var(--mut);font-size:12px}
+.empty{color:var(--mut);padding:28px 0;text-align:center}
+code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
+</style></head><body><div class="wrap">
+<h1>Resource ledger</h1>
+<p class="sub">Sessions recorded by the bed composer, including ones that ended in a crash. Byte figures are estimates from each object's own shape, not measured native memory.</p>
+<div class="bar">
+  <button id="reload">Reload</button>
+  <button id="json">Export JSON</button>
+  <button id="csv">Export CSV</button>
+  <button id="clear">Clear history</button>
+</div>
+<div id="out"><div class="empty">Reading…</div></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+let DB=null,SESS=[],SNAPS={};
+function open(){return new Promise(r=>{const q=indexedDB.open('pbc-diag',1);
+  q.onupgradeneeded=e=>{const d=e.target.result;
+    if(!d.objectStoreNames.contains('sessions'))d.createObjectStore('sessions',{keyPath:'sid'});
+    if(!d.objectStoreNames.contains('snaps'))d.createObjectStore('snaps',{autoIncrement:true}).createIndex('sid','sid');
+    if(!d.objectStoreNames.contains('events'))d.createObjectStore('events',{autoIncrement:true}).createIndex('sid','sid')};
+  q.onsuccess=e=>{DB=e.target.result;r()};q.onerror=()=>r()})}
+function all(store){return new Promise(r=>{if(!DB)return r([]);
+  try{const t=DB.transaction(store,'readonly').objectStore(store).getAll();
+    t.onsuccess=()=>r(t.result||[]);t.onerror=()=>r([])}catch(e){r([])}})}
+function mb(x){return x==null?'—':x.toFixed(1)}
+async function load(){
+  await open();
+  SESS=await all('sessions');
+  const sn=await all('snaps');
+  SNAPS={};for(const row of sn){(SNAPS[row.sid]=SNAPS[row.sid]||[]).push(row.s)}
+  for(const k in SNAPS)SNAPS[k].sort((a,b)=>a.t-b.t);
+  draw();
+}
+function draw(){
+  const out=$('#out');out.replaceChildren();
+  let last=null;try{last=JSON.parse(localStorage.getItem('pbc.diag.last')||'null')}catch(e){}
+  if(!SESS.length&&!last){out.innerHTML='<div class="empty">No sessions recorded yet. Open the composer, generate a few beds, then come back.</div>';return}
+  SESS.sort((a,b)=>b.started-a.started);
+  for(const s of SESS){
+    const snaps=SNAPS[s.sid]||[];
+    const card=document.createElement('div');card.className='card';
+    const first=snaps[0],lastS=snaps[snaps.length-1];
+    const dur=lastS?(lastS.t/1000/60).toFixed(1):'0';
+    card.innerHTML='<h2>'+(s.clean?'':'⚠ ')+s.sid+(s.clean?'':' — ended without closing')+'</h2>'+
+      '<div class="meta">'+new Date(s.started).toLocaleString()+' · '+dur+' min · '+snaps.length+' snapshots'+
+      (lastS?' · last heap '+(lastS.heap?lastS.heap.u+'/'+lastS.heap.l+' MB':'?')+' · '+lastS.beds+' beds · '+lastS.dom+' DOM nodes · stage '+lastS.stage:'')+'</div>';
+    if(first&&lastS){
+      const keys=new Set([...Object.keys(first.res||{}),...Object.keys(lastS.res||{})]);
+      const rows=[...keys].map(k=>{
+        const a=(first.res||{})[k]||{},b=(lastS.res||{})[k]||{};
+        return {k,outA:a.out||0,outB:b.out||0,made:b.made||0,freed:b.freed||0,gc:b.gc||0,mb:b.mb||0,peak:b.peak||0,
+                d:(b.out||0)-(a.out||0)};
+      }).filter(r=>r.made).sort((x,y)=>y.d-x.d);
+      const t=document.createElement('table');
+      t.innerHTML='<tr><th>resource</th><th>made</th><th>released</th><th>collected</th><th>outstanding first</th><th>outstanding last</th><th>change</th><th>est MB</th><th>peak</th></tr>'+
+        rows.map(r=>'<tr class="'+(r.d>20?'grow':'')+'"><td>'+r.k+'</td><td>'+r.made+'</td><td>'+r.freed+'</td><td>'+r.gc+'</td><td>'+r.outA+'</td><td>'+r.outB+'</td><td>'+(r.d>0?'+':'')+r.d+'</td><td>'+mb(r.mb)+'</td><td>'+r.peak+'</td></tr>').join('');
+      card.append(t);
+    }
+    out.append(card);
+  }
+  if(last){const c=document.createElement('div');c.className='card';
+    c.innerHTML='<h2>Emergency checkpoint</h2><div class="meta">The last second written before the page stopped, session '+last.sid+', '+new Date(last.at).toLocaleString()+'</div><pre style="overflow:auto;font-size:12px">'+
+      JSON.stringify(last.snap,null,1).replace(/</g,'&lt;')+'</pre>';out.append(c)}
+}
+function dl(name,text,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);
+  const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
+$('#reload').onclick=load;
+$('#json').onclick=async()=>{const ev=await all('events');
+  dl('pbc-diagnostics.json',JSON.stringify({sessions:SESS,snaps:SNAPS,events:ev},null,1),'application/json')};
+$('#csv').onclick=()=>{const lines=['session,t_ms,stage,heap_mb,dom,beds,resource,made,freed,collected,outstanding,est_mb'];
+  for(const sid in SNAPS)for(const s of SNAPS[sid])for(const k in (s.res||{})){const c=s.res[k];
+    lines.push([sid,s.t,s.stage,s.heap?s.heap.u:'',s.dom,s.beds,k,c.made,c.freed,c.gc,c.out,c.mb].join(','))}
+  dl('pbc-diagnostics.csv',lines.join('\n'),'text/csv')};
+$('#clear').onclick=()=>{if(!confirm('Delete all recorded diagnostic sessions?'))return;
+  try{indexedDB.deleteDatabase('pbc-diag');localStorage.removeItem('pbc.diag.last')}catch(e){}
+  SESS=[];SNAPS={};draw()};
+load();
+</script></body></html>
