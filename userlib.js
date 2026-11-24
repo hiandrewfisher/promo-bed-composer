@@ -220,5 +220,5 @@ const UL={
  shut
 };
 window.UL=UL;
-UL.count().then(n=>log('ready,',n,'pieces stored')).catch(e=>log('store unavailable',e.message));
+UL.count().then(n=>{window.PBC_MINE_N=n;log('ready,',n,'pieces stored')}).catch(e=>log('store unavailable',e.message));
 })();
