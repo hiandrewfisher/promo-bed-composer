@@ -132,6 +132,18 @@ const shut=()=>{if(W){W.terminate();W=null;log('worker released')}
   if(AC){AC.close().catch(()=>{});AC=null}};
 
 const keyOf=f=>f.name+'|'+f.size;
+const safe=k=>k.replace(/[^A-Za-z0-9._-]+/g,'_').slice(0,120);
+let DIR=null;
+async function dir(){if(DIR)return DIR;
+ try{const root=await navigator.storage.getDirectory();DIR=await root.getDirectoryHandle('mine',{create:true})}
+ catch(e){log('no private file system; audio will not be kept',e.message);DIR=false}
+ return DIR}
+async function keep(f,k){const d=await dir();if(!d)return null;
+ const nm=safe(k)+'.'+(f.name.split('.').pop()||'bin').toLowerCase();
+ try{const h=await d.getFileHandle(nm,{create:true}),w=await h.createWritable();
+  await w.write(f);await w.close();return nm}
+ catch(e){log('could not keep the audio for',f.name,e.message);return null}}
+
 async function has(k){return !!(await tx('readonly',s=>s.get(k)))}
 
 function analyse(mono,sr,name){
@@ -165,6 +177,7 @@ async function one(f){
  const piece=await analyse(mono,sr,f.name);
  mono=null;
  piece.k=k;piece.added=Date.now();piece.bytes=f.size;
+ piece.audio=await keep(f,k);piece.type=f.type||'';
  await tx('readwrite',s=>s.put(piece));
  // the decoder holds memory of its own; give it back every so often
  if(++since>=12){since=0;if(AC){try{await AC.close()}catch(e){}AC=null;log('decoder recycled')}}
@@ -172,6 +185,10 @@ async function one(f){
 }
 
 const UL={
+ /* the recording itself, read back on demand */
+ async audio(piece){if(!piece||!piece.audio)return null;const d=await dir();if(!d)return null;
+  try{return await (await d.getFileHandle(piece.audio)).getFile()}catch(e){log('audio missing for',piece.title);return null}},
+
  async ingest(files,onProgress){
   const list=[...files].filter(f=>/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name));
   log('ingest',list.length,'of',files.length,'files');
@@ -196,7 +213,9 @@ const UL={
   const k=ks[Math.floor(r()*ks.length)%ks.length];
   return tx('readonly',s=>s.get(k));
  },
- clear(){dbp=null;return new Promise(res=>{const q=indexedDB.deleteDatabase(DB);
+ async clear(){dbp=null;
+  try{const d=await dir();if(d)for await (const nm of d.keys())await d.removeEntry(nm).catch(()=>{})}catch(e){}
+  return new Promise(res=>{const q=indexedDB.deleteDatabase(DB);
    q.onsuccess=q.onerror=q.onblocked=()=>{log('library cleared');res()}})},
  shut
 };
