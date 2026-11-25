@@ -846,8 +846,7 @@ function vary(S0,o){const amt=(o.song||{}).variety??1;if(amt<=0)return S0;
  if(S0.prog&&PALT[S0.prog]&&chance(.45*EXAG)){const a=PALT[S0.prog];S.prog=a[Math.min(a.length-1,Math.floor(fpMix('chRate')*a.length))]}
  if(/^(jazz|soul|gospel)$/.test(S.color)&&S0.color!==S.color&&chance(.78))S.color=S0.color;
  if(/^(jazz|gospel)$/.test(S.prog)&&S0.prog!==S.prog&&chance(.78))S.prog=S0.prog;
- // measured: jazz/soul/gospel harmony is the single biggest drag on ratings;
- // bossa and plain triads are the biggest lift. Re-roll most of the time.
+ // Preserve the genre's harmonic identity; expression scoring chooses suitable chord colors.
  const profile=Math.floor(V()*6);S.profile=profile;if(FP)S.melody=FP.leap>.55?'hook':FP.leap<.3?'lyric':S0.melody;else if(chance(.2))S.melody=S0.melody=='hook'?'lyric':'hook';
  // tempo: a wider window than the genre's default
  {const c0=(S0.bpm[0]+S0.bpm[1])/2,sp=(S0.bpm[1]-S0.bpm[0])/2,shift=FP?(.5-FP.dens)*sp*.9*EXAG:0,c=c0+shift,wid=sp*(1+.45*w*EXAG);S.bpm=[Math.max(48,c-wid),Math.min(196,c+wid)]}
@@ -1175,24 +1174,24 @@ function expressionContext(o,S){const R=rng((o.seed^0x28e91a)>>>0),ids=Object.ke
  for(const [slot,axes] of groups){let ix=names.indexOf(S.slots?.[slot]);if(ix<0){let u=R()*total;ix=weights.findIndex(w=>(u-=w)<=0);if(ix<0)ix=0}sources[slot]=names[ix];
   for(const k of axes){const p=profiles[ix][k],avg=profiles.reduce((n,g,i)=>n+g[k].preferred*weights[i]/total,0),mid=clamp(p.preferred*(.65+.3*p.importance)+avg*(.35-.3*p.importance),p.min,p.max);ranges[k]={...p};values[k]=Math.round(clamp(mid+(R()+R()-1)*(p.max-p.min)*.48,p.min,p.max))}}
  const moods={tender:values.tenderness+values.intimacy,longing:values.longing+values.melancholy,hopeful:values.joy+values.tenderness,playful:values.playfulness+values.syncopation,determined:values.tension+values.pocket,reflective:values.intimacy+values.restraint};
- const mood=Object.entries(moods).map(([k,v])=>[k,v+R()*25]).sort((a,b)=>b[1]-a[1])[0][0];
+ const mood=Object.entries(moods).map(([k,v])=>[k,v+R()*45]).sort((a,b)=>b[1]-a[1])[0][0];
  return{version:1,values,ranges,sources,genreWeights:Object.fromEntries(names.map((k,i)=>[k,eround(weights[i]/total)])),mood,period:R()<.55?8:16,phase:R()*.5,amount:clamp((o.song||{}).soul??1,0,2),players:{},actions:{},scores:{},phrases:[]}}
-function expressEvents(ev,dr,P,o){const V=P.values,A=P.amount,R=rng((o.seed^0x721ac9)>>>0),by=new Map(),focus=new Set(),arc=B=>Math.sin(Math.PI*mod(B/P.period+P.phase,1)),sway=B=>Math.sin(2*Math.PI*B/P.period)*V.sway*.20*A+Math.sin(2*Math.PI*B/4)*V.flexibility*.055*A;
+function expressEvents(ev,dr,P,o){const V=P.values,A=P.amount,R=rng((o.seed^0x721ac9)>>>0),by=new Map(),focus=new Set(),mood={tender:[1.15,.8,.95],longing:[1.25,1.15,.8],hopeful:[1.05,1,1.05],playful:[.85,.9,1.35],determined:[.8,.85,1.1],reflective:[1.1,.75,.8]}[P.mood]||[1,1,1],arc=B=>Math.pow(Math.sin(Math.PI*mod(B/P.period+P.phase,1)),mood[0]),sway=B=>(Math.sin(2*Math.PI*B/P.period)*V.sway*.20+Math.sin(2*Math.PI*B/4)*V.flexibility*.055)*mood[2]*A;
  const lead=ev.filter(e=>e.r?.name==='lead'&&!e.uni&&!e.sym&&!e.r.fx).sort((a,b)=>a.B-b.B),phrases=new Map(),focusBeats=new Set();
  for(const e of lead){const i=Math.floor(e.B/P.period);if(!phrases.has(i))phrases.set(i,[]);phrases.get(i).push(e)}
  for(const [i,a] of phrases){let best=a[0],bs=-Infinity;for(let j=0;j<a.length;j++){const e=a[j],p=a[j-1],q=a[j+1],s=2*Math.min(3,e.d)+.15*(p?Math.abs(e.m-p.m):0)+(q&&e.m>q.m?1:0)+arc(e.B);if(s>bs){bs=s;best=e}}focus.add(best);focusBeats.add(Math.round(best.B*2));P.phrases.push({beat:i*P.period,focus:eround(best.B),pitch:best.m,shape:eround(arc(best.B)),notes:a.length})}
- for(const e of ev){if(!e.r||e.r.fx||e.r.riser||e.uni||e.sym)continue;if(!by.has(e.r))by.set(e.r,[]);by.get(e.r).push(e)}
+ for(const e of ev){if(!e.r||e.r.fx||e.riser||e.uni||e.sym)continue;if(!by.has(e.r))by.set(e.r,[]);by.get(e.r).push(e)}
  for(const [r,arr] of by){arr.sort((a,b)=>a.B-b.B);const nm=r.name.replace(/2$/,''),cap=EK[r.kind]||[.45,.15,0],mel=/^(lead|counter|riff|dbl)$/.test(nm),bass=/^(bass|sub)$/.test(nm),p={lean:eround((R()-.5)*V.flexibility*.12),touch:eround(.85+R()*.3),restraint:eround(clamp(V.restraint/100+(R()-.5)*.18,0,1)),bend:cap[2],vibrato:cap[1],legato:cap[0]};P.players[r.name]={instrument:r.id,...p};let last='',lastB=-99;
  for(let i=0;i<arr.length;i++){const e=arr[i],prev=arr[i-1],next=arr[i+1],f=focus.has(e),off=Math.abs(e.B-Math.round(e.B))>.02,ph=arc(e.B),gap=next?next.B-e.B:2,iv=prev?Math.abs(e.m-prev.m):0,join=next&&gap>.1&&gap<e.d+.3&&Math.abs(next.m-e.m)<=12,imp=f?1:mel?.35+.25*ph:.13+.2*ph,en=clamp(A*p.touch,0,2);
  if(A>0)e.dt=(e.dt||0)*(.65+.18*V.flexibility/100)+sway(e.B)+p.lean*A+(off?V.pocket*.035*A:0);
  e.expression=A>0?eround(clamp((.48+.65*imp+.2*ph)*en,0,1.65)):1;e.focus=f?1:0;
- const choices=[['plain',38+30*p.restraint],['linger',mel&&gap>.38&&e.d>.25?V.phrasing*.55+imp*55:0],['lean',V.pocket*.6+imp*25],['connect',join?V.legato*.7*cap[0]+imp*38:0],['vibrato',mel&&e.d>.65&&cap[1]>0?V.vibrato*.65*cap[1]+imp*42*cap[1]:0],['bend',mel&&iv>0&&iv<=7&&e.d>.4&&cap[2]>0?V.bend*.6*cap[2]+imp*50*cap[2]:0],['release',!next||gap-e.d>.4?V.restraint*.65+imp*30:0],['anticipate',mel&&off?V.syncopation*.6+imp*24:0]];
- const ranked=choices.filter(x=>x[1]>0).map(([k,v])=>[k,v+R()*12-(k===last&&e.B-lastB<1.5&&k!=='plain'?24:0)]).sort((a,b)=>b[1]-a[1]);const [act,score]=A>0?ranked[0]:['plain',0];
+ const choices=[['plain',38+30*p.restraint],['linger',mel&&gap>.38&&e.d>.25?V.phrasing*.55+imp*55:0],['lean',V.pocket*.6+imp*25],['connect',join?V.legato*.7*cap[0]+imp*38:0],['vibrato',mel&&e.d>.65&&cap[1]>0?V.vibrato*.55*cap[1]+imp*48+10:0],['bend',mel&&iv>0&&iv<=7&&e.d>.4&&cap[2]>0?V.bend*.55*cap[2]+imp*46+8:0],['release',!next||gap-e.d>.4?V.restraint*.65+imp*30:0],['anticipate',mel&&off?V.syncopation*.6+imp*24:0]];
+ const ranked=choices.filter(x=>x[1]>0).map(([k,v])=>[k,v+R()*12-(k===last&&e.B-lastB<1.5&&k!=='plain'?24:0)]).sort((a,b)=>b[1]-a[1]);const top=ranked[0][1],eligible=ranked.filter(([k,v])=>v>=top-(mel?29:17)),weights=eligible.map(([k,v])=>Math.exp((v-top)/(mel?14:9))*(k==='bend'||k==='vibrato'?mood[1]:1));let ticket=R()*weights.reduce((a,b)=>a+b,0),ix=weights.findIndex(w=>(ticket-=w)<=0);const [act,score]=A>0?eligible[Math.max(0,ix)]:['plain',0];
  if(act==='linger'){e.d=Math.min(e.d*(1+.12*en),Math.max(e.d,gap-.025));e.dt+=Math.min(15,8*en)}
  if(act==='lean')e.dt+=Math.min(12,6*en)*(bass?-1:1);
  if(act==='connect'){e.legato=1;e.leg2=1}
  if(act==='vibrato')e.expression=eround(clamp(e.expression*1.22,0,1.65));
- if(act==='bend'&&prev){e.slide=prev.m;e.slideT=.06+.035*Math.min(3,iv)}
+ if(act==='bend'&&prev){const distance=Math.min(r.kind==='guitar'?2:3,iv);e.slide=e.m+Math.sign(prev.m-e.m)*distance;e.slideT=.06+.035*distance}
  if(act==='release'){e.d*=1-.08*Math.min(1,en);e.expression*=.82}
  if(act==='anticipate')e.dt-=Math.min(13,7*en);
  if(!mel&&!bass&&focusBeats.has(Math.round(e.B*2)))e.v=clamp(e.v*(1-.055*Math.min(1,en)*V.interaction/100),.05,1);
@@ -1202,7 +1201,7 @@ function expressEvents(ev,dr,P,o){const V=P.values,A=P.amount,R=rng((o.seed^0x72
  for(const k in P.scores)P.scores[k]=eround(P.scores[k]/P.actions[k]);P.phrases=P.phrases.slice(0,128);return P}
 
 /* ---------- composer: source composition + voice analysis + genre blueprint ---------- */
-function compose(o){const R=rng(o.seed),H=tools(R),S=vary(o.blend?blendG(o.blend,o.seed,{style:(o.song||{}).blendStyle,avoidGenres:o.avoidGenres}):G[o.genre]||G.indie,o),A=o.A,L=o.L,ev=[],dr=[],SWEEPS=[],meta={genre:S.n};let LIFT=null;const XP=expressionContext(o,S);S.modes={...S.modes};
+function compose(o){const R=rng(o.seed),H=tools(R),S={...vary(o.blend?blendG(o.blend,o.seed,{style:(o.song||{}).blendStyle,avoidGenres:o.avoidGenres}):G[o.genre]||G.indie,o)},A=o.A,L=o.L,ev=[],dr=[],SWEEPS=[],meta={genre:S.n};let LIFT=null;const XP=expressionContext(o,S);S.modes={...S.modes};
  const autoFull=((o.seed>>>0)%7)/6,underFull=clamp((o.song||{}).underFull??(.78+.12*autoFull),0,1),afterFull=clamp((o.song||{}).afterFull??(.94+.06*(1-autoFull)),0,1),retain=(B,salt,base=0)=>{const h=Math.imul(Math.round(B*16)+1,0x9e3779b1)^Math.imul(salt+1,0x85ebca6b)^(o.seed>>>0);return (Math.imul(h^(h>>>16),0x45d9f3b)>>>0)/4294967296<base+(1-base)*underFull};
  // source: a public-domain score, or an original progression and hook
  let piece=o.piece||null;
@@ -1553,7 +1552,7 @@ function compose(o){const R=rng(o.seed),H=tools(R),S=vary(o.blend?blendG(o.blend
   const UN=S.edm.uni||{};for(const rn in UN){const r=roles[rn],k=UN[rn];if(!r||k<2)continue;r.uniN=k;const sp=k>=5?22:13,gv=k>=5?.62:k>=3?.72:.8;for(const e of ev.filter(e=>e.r===r&&!e.riser)){const base={...e};e.gm=Math.pow(gv,1.6);e.uni=0;for(let j=0;j<k;j++){const x=2*j/(k-1)-1;if(Math.abs(x)<1e-6)continue;ev.push({...base,gm:Math.pow(gv,1.6),det:x*sp*(.85+.3*R()),pan:x*.78,dt:(base.dt||0)+R()*4,uni:j+1})}}}}
  const LEAN={sub:-2,lead:8,counter:5,keys:3,pad:10,pad2:12,bass:-2,pulse:0,riff:2,color:4,dbl:6},PH={},drift=(r,B)=>{const p=PH[r.name]??(PH[r.name]=(r.name.length*1.618)%6.283);return Math.sin(6.283*B/7+p)+.6*Math.sin(6.283*B/3.1+2*p)};
  // timing: genre swing, rubato tempo map, per-player feel, micro-timing
- const sw=(o.song&&o.song.sw!=null?o.song.sw:(S.sw||0)*H.rg(.7,1.15)),sw16=(S.sw16||0)*H.rg(.8,1.15),swing=B=>{const f=mod(B,1);if(Math.abs(f-.5)<1e-6)return B+sw/6;if(sw16&&(Math.abs(f-.25)<1e-6||Math.abs(f-.75)<1e-6))return B+sw16/12;return B},lagMul=S.lag||1;
+ const sw=(o.song&&o.song.sw!=null?o.song.sw:clamp((S.sw||0)*H.rg(.7,1.15)*(1+XP.amount*(XP.values.swing-expressionProfile(G[XP.sources.groove]).swing.preferred)/160),0,.65)),sw16=(S.sw16||0)*H.rg(.8,1.15),swing=B=>{const f=mod(B,1);if(Math.abs(f-.5)<1e-6)return B+sw/6;if(sw16&&(Math.abs(f-.25)<1e-6||Math.abs(f-.75)<1e-6))return B+sw16/12;return B},lagMul=S.lag||1;
 
  // ---- performance: phrasing, groove feel, articulation, pedal, slides, fills — shaped per genre, per song and per instrument ----
  {const SGp=o.song||{},PF=SGp.feel??1,PR=rng((o.seed^0x9e11)>>>0),hs=x=>{let h=2166136261;for(const ch of String(x))h=Math.imul(h^ch.charCodeAt(0),16777619);return((h>>>0)%1000)/1000};
@@ -1683,7 +1682,7 @@ function compose(o){const R=rng(o.seed),H=tools(R),S=vary(o.blend?blendG(o.blend
      const leadP=DIAG.parts[(roles&&roles.lead&&roles.lead.name)||'lead'];
      DIAG.leadNotes=leadP?leadP.notes:null;
      DIAG.leadSpan=leadP?(leadP.hi-leadP.lo):null;
-     try{DIAG.groove=window.__glock||null}catch(e){}
+     DIAG.groove=null;
      DIAG.voiceBandShare=+(Object.values(DIAG.parts)
         .filter(v=>v.mean>=48&&v.mean<=72)
         .reduce((a,v)=>a+v.notes,0)/tn).toFixed(2);
