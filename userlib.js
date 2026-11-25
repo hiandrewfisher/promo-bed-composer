@@ -297,7 +297,9 @@ const UL={
  },
 
  async ingest(files,onProgress,opts){
+  if(!Number.isSafeInteger(opts?.limit)||opts.limit<1)throw new Error('Library analysis requires an explicit generation batch limit');
   const list=[...files].filter(f=>/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name));
+  list.length=Math.min(list.length,opts.limit);
   log('ingest',list.length,'of',files.length,'files');
   let ok=0,skip=0,fail=0;
   for(let i=0;i<list.length;i++){
