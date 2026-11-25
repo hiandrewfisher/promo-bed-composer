@@ -143,7 +143,7 @@ function kernel(){
    postMessage({type:'done',piece:{
      title:name.replace(/\.[^.]+$/,''),composer:'Your library',
      mode,bar:BAR,len:bars*BAR,mel,chords,phr,
-     key,bpm:+bpm.toFixed(1),arc:arc.map(v=>+(v/am).toFixed(3)),transcription:{keyMargin:+(ks-second).toFixed(3),tempoConfidence:+bs.toFixed(4),melodyConfidence:confidence.length?+(confidence.reduce((a,b)=>a+b,0)/confidence.length).toFixed(3):0},mine:1}});
+     key,bpm:+bpm.toFixed(1),arc:arc.map(v=>+(v/am).toFixed(3)),transcription:{phaseSeconds:ph/fps,keyMargin:+(ks-second).toFixed(3),tempoConfidence:+bs.toFixed(4),melodyConfidence:confidence.length?+(confidence.reduce((a,b)=>a+b,0)/confidence.length).toFixed(3):0},mine:1}});
   }catch(e){postMessage({type:'error',message:e.message})}
  };
 }
@@ -170,7 +170,7 @@ const shut=async()=>{if(W){W.terminate();W=null;log('worker released')}
    version can be found and done again. 2: Pearson key correlation (every major
    key used to come back minor), per-out-tone chord penalty, energy-weighted
    chroma, mode settled by the chords, and stems where available. */
-const AV=3;
+const AV=4;
 const keyOf=f=>[f.name,f.size,f.lastModified||0].join('|');
 const safe=k=>k.replace(/[^A-Za-z0-9._-]+/g,'_').slice(0,120);
 let DIR=null;
@@ -205,6 +205,9 @@ function analyse(mono,sr,name){
 }
 
 const MAXSEC=60;
+function secondary(pcm,sr,onStage){return new Promise(resolve=>{let w,t,done=false;const end=notes=>{if(done)return;done=true;clearTimeout(t);if(w)w.terminate();resolve(notes||null)};try{const n=Math.min(22050*24,Math.floor(pcm.length*22050/sr)),out=new Float32Array(n);for(let i=0;i<n;i++){const x=i*sr/22050,j=Math.floor(x),f=x-j;out[i]=(pcm[j]||0)*(1-f)+(pcm[j+1]||0)*f}w=new Worker('pitch-worker.js?v=1',{type:'module'});t=setTimeout(()=>end(null),25000);w.onmessage=e=>{const d=e.data;if(d.progress!=null){onStage&&onStage('Checking polyphonic transcription',d.progress);return}if(d.error)log('secondary transcription unavailable',d.error);end(d.notes)};w.onerror=()=>end(null);w.postMessage({pcm:out.buffer},[out.buffer])}catch(e){end(null)}})}
+function mergeTranscription(p,events){if(!Array.isArray(events)||events.length<8)return p;const bps=p.bpm/60,phase=p.transcription?.phaseSeconds||0,limit=Math.min(p.len,Math.floor((24-phase)*bps*2)/2),line=[];let prev=null;for(let t=0;t<limit;t+=.5){const sec=phase+t/bps;let best=null,score=0;for(const n of events){if(n[2]<48||n[2]>88||n[0]>sec+.3/bps||n[0]+n[1]<sec+.05/bps)continue;const q=n[3]*Math.min(1,n[1]*bps)*(prev===null?1:Math.exp(-Math.max(0,Math.abs(n[2]-prev)-5)*.07));if(q>score){best=n;score=q}}if(!best||score<.15)continue;const last=line[line.length-1];if(last&&last[2]===best[2]&&Math.abs(last[0]+last[1]-t)<.01)last[1]+=.5;else line.push([t,.5,best[2]]);prev=best[2]}if(line.length<4||line.reduce((n,x)=>n+x[1],0)<limit*.4)return p;p.mel=[...line,...p.mel.filter(n=>n[0]>=limit)];p.transcription={...p.transcription,secondary:'Basic Pitch',polyphonicEvents:events.length};return p}
+
 let since=0;
 
 /* Separate first, then read the harmony from the pitched stems alone. A full mix
@@ -249,8 +252,11 @@ async function one(f,useStems,onStage){
   for(let c=0;c<chs;c++){const d=buf.getChannelData(c);for(let i=0;i<n;i++)mono[i]+=d[i]/chs}
  }finally{ buf=null;ab=null }
  if(!mono||mono.length<sr)return 'fail';
- const piece=await analyse(mono,sr,f.name);
+ const preview=mono.slice(0,Math.min(mono.length,Math.round(sr*24)));let piece=await analyse(mono,sr,f.name);
  mono=null;
+ await shut();
+ if(piece.transcription?.melodyConfidence<.45&&window.PBC_SECONDARY!==false){onStage&&onStage('Checking extracted melody',0);piece=mergeTranscription(piece,await secondary(preview,sr,onStage));}
+
  if(extra)Object.assign(piece,extra);
  piece.k=k;piece.added=Date.now();piece.bytes=f.size;
  piece.audio=null;piece.type=f.type||'';piece.av=AV;
