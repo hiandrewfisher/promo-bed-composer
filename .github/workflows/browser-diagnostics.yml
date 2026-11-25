@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: node --check diagnostics.js
       - run: node quality-test.cjs
+      - run: node tests/verify-musicians.cjs
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
       - run: |
@@ -41,6 +42,8 @@ jobs:
               await page.goto('http://localhost:8765/',{waitUntil:'domcontentloaded'});
               await page.waitForFunction(()=>!!window.__PBCDIAG?.breadcrumbs);
               await page.evaluate(async()=>{const c=new OfflineAudioContext(2,44100*25,44100);const o=c.createOscillator();o.connect(c.destination);o.start();await c.startRendering()});
+              const auditions=await page.evaluate(async()=>{const ctx=new AudioContext(),out=[];try{for(const id of ['kawai','gm_accordion','vc_balafon']){try{out.push({id,ok:true,result:await PBC.auditionInstrument(ctx,id)})}catch(e){out.push({id,ok:false,error:e.message})}}return out}finally{await ctx.close()}});
+              record('instrument-auditions',auditions);console.log('Instrument auditions:',JSON.stringify(auditions));if(!auditions[0].ok)throw Error('Local instrument audition failed');
               await sample();
               record('breadcrumbs',await page.evaluate(()=>window.__PBCDIAG.breadcrumbs()));
               const response=await page.request.get('https://hiandrewfisher.github.io/promo-bed-composer/diagnostics.js?check='+Date.now());
