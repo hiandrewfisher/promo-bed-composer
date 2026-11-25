@@ -50,7 +50,7 @@
 #mineBox .mineStem .sub{display:block;font-size:12px;opacity:.65;margin:2px 0 0}
 #mineBox .mineWarn{color:#c2410c}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) #mineBox .mineWarn{color:#fdba74}}
-</style><div class="top"><div><h1>Promo Bed Composer <span class="ver" title="build 2026-11-24 22:41 UTC">v136</span></h1><p class="sub">Edit one voice segment. Every music bed is composed around it from sampled instruments.</p></div><span id="status" class="status">Ready</span></div>
+</style><div class="top"><div><h1>Promo Bed Composer <span class="ver" title="build 2026-11-24 22:41 UTC">v137</span></h1><p class="sub">Edit one voice segment. Every music bed is composed around it from sampled instruments.</p></div><span id="status" class="status">Ready</span></div>
 <main class="workspace"><aside class="controls"><div class="panel"><div class="uploads"><label class="drop" id="voiceDrop"><span class="glyph">◉</span><b id="voiceTitle">Add voice recording</b><span class="sub" id="voiceSub">Drop or choose audio</span><input id="voice" type="file" accept="audio/*"></label><div class="drop" id="musicDrop"><span class="glyph">♫</span><b id="musicTitle">Composed music beds</b><span class="sub" id="musicSub">190 real recorded instruments incl. 68 hardware synths (Juno-6, Jupiter-4, JD-800, JX-3P, SH-2, Xpander, Chroma Polaris, Analog Four…), 14 kits incl. TR-909, TR-707, DMX, SP-12, Linn 9000, CR-78, TR-606 · 27 genres · 5,705 public-domain pieces</span></div></div><div class="ghead"><b>Genre mix</b><span class="mini">blended into every bed</span><button id="gEven" class="pill">Even</button><button id="gClear" class="pill">Clear</button></div><div id="genreMix" class="gmix"></div><div class="srcrow"><label for="srcMix" class="gname" title="Hard left composes something new out of your library. Hard right is the recording itself. In between you hear both.">Source</label><span class="mini">New composition from it</span><input type="range" id="srcMix" min="0" max="100" step="5" value="60" aria-label="From a new composition built out of your library, through both together, to your recording as written"><span class="mini">As written</span><b id="srcVal" class="gpct">60%</b></div><div class="toolbar" style="margin-top:10px"><button id="compose" class="primary">Generate 8 beds</button><button id="cancelQ" class="pill" title="Stop composing the beds still waiting in line (the one being made right now finishes)">Cancel queue</button><button id="ratings" class="pill" title="Save a JSON of every detail of each bed you liked or disliked, to send back so the composer can learn which of its choices work">Export likes &amp; dislikes (JSON)</button><span class="mini">from the selected read and bed length</span><span id="summary" class="status push">0 beds</span></div><div class="meter" style="margin-top:9px"><div class="bar"><div id="genBar"></div></div><span id="genText" class="mini">Idle</span></div><p class="mini credits">Synths: Public Samples hardware multisamples (public-domain dedication). Drum machines: Synth Abuse collection via smpldsnds Drum Abuse packs. FX: Sonic Pi samples (CC0) and Public Samples Drones. Real recordings: Salamander Grand (A. Holm, CC BY 3.0); VSCO 2 CE and VCSL incl. Steinway, Kawai, uprights, TX81Z synth, percussion (Versilian Studios, CC0); Ivy Audio upright via VSCO; Greg Sullivan Wurlitzer, CP-80, Pianet T (CC BY 3.0); D. Smolken basses (CC0); Karoryfer electric guitar, quartertone nylon and U. Iowa steel guitar via tonejs-instruments; TR-808 set by Michael Fischer; Sonic Pi drums, tabla and vinyl (CC0); Perfect Drums (WTFPL); Karoryfer Samples guitars, basses, saxes, tuba, erhu, cithara, cello (Bigcat), Osiris piano, Hungarian zither, guitar banjo, bass tagelharpa (CC0); jlearman steel drum (Unlicense); MTG solo saxophones (Universitat Pompeu Fabra, CC BY 4.0). Source library: public-domain scores: OpenScore Lieder art songs (CC0), J. S. Bach chorales and other classical scores, and traditional tunes from O&#39;Neill&#39;s Music of Ireland (1903), Ryan&#39;s Mammoth Collection (1883), Aird&#39;s Selection of Airs (1782) and American and Northumbrian fife and pipe books, as encoded in the music21 corpus; melody-only tunes harmonized automatically; plus traditional tunes from The Session (thesession.org), downloaded and converted by the app itself. Music theory: Tonal (MIT) in the browser, music21 (BSD) for score analysis.</p></div>
 <div class="panel" id="voicePanel"><div class="sectiontitle"><h2>Voice segment</h2><span id="segmentText" class="chip">Upload voice to begin</span></div><div id="voiceWave" class="timeline" title="Drag edges to trim; drag center to move; scroll to zoom around cursor"><canvas id="voiceCanvas"></canvas><div id="selection" class="selection hidden"><div class="center" title="Drag to move the selected segment"></div><div class="edge left" title="Drag to adjust the beginning"></div><div class="edge right" title="Drag to adjust the end"></div></div></div><div class="between" style="margin-top:12px"><div class="pills" id="durations"><span class="mini" style="align-self:center">Music length</span><button class="pill" data-duration="20">20s</button><button class="pill selected" data-duration="25">25s</button><button class="pill" data-duration="30">30s</button><button class="pill" data-duration="60">60s</button></div><button id="detect" class="pill hidden" hidden></button></div><div class="toolbar" style="margin-top:10px"><button id="skipMode" class="pill">＋ Mark skip</button><button id="clearSkips" class="pill">Clear skips</button><span id="skipInfo" class="mini">No skipped sections</span></div><div id="note">Drag to select. Drag the edges to trim, the middle to move, or scroll to zoom. Mark skips to remove unwanted words.</div><div class="settings" style="margin-top:10px"><label class="mini fnLabel" for="fileName">File name</label><input id="fileName" value="Promo bed" aria-label="File name"><span id="filenamePreview" class="mini"></span><span class="hidden"><input id="promoName"><input id="voicer"><input id="campaign"></span></div></div>
 <div class="panel"><div class="sectiontitle"><div><h2>Music ramps</h2><p class="sub">One blue envelope: duck down, recover, then fade to silence. Drag its three handles.</p></div><span id="rampLabel" class="chip">Attack 0.18s · Release 0.45s</span></div><div class="globalramp" id="rampGraph"><svg viewBox="0 0 1000 160" preserveAspectRatio="none"><path id="rampPath" fill="none" stroke="#1768d2" stroke-width="4"/><path d="M0 80 H1000" stroke="#cad7e4" stroke-width="1" stroke-dasharray="6 5"/></svg><span class="ramptitle" style="top:4px">DUCKING → END FADE</span><div class="rampdot" id="attackDot" title="Ducking ramp down"></div><div class="rampdot" id="releaseDot" title="Ducking recovery"></div><div class="rampdot curve" id="downCurve" title="Drag up or down to curve the duck-down ramp"></div><div class="rampdot curve" id="upCurve" title="Drag up or down to curve the recovery ramp"></div><div class="rampdot curve" id="fadeCurve" title="Drag up or down to curve the end fade"></div><div class="rampdot" id="endFadeDot" title="Drag left/right for ending fade length, up/down for fade shape"></div></div><div class="gapControls" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:12px 0"><label class="mini" style="display:grid;gap:5px">Music rebound between words <strong id="gapLiftValue">0%</strong><input id="gapLift" type="range" min="0" max="100" step="5" value="0" aria-label="Music rebound between words"></label><label class="mini" style="display:grid;gap:5px">Wait before rebound <strong id="gapHoldValue">0.45s</strong><input id="gapHold" type="range" min="0" max="2" step="0.05" value="0.45" aria-label="Wait before music rebounds"></label></div><div class="between"><span class="mini" id="endFadeLabel"></span><span class="mini" style="display:none">Blue end handle: horizontal = fade length; vertical = fade curve</span></div><p class="mini">Each row has separate blue handles for loudest and quietest music levels. Drag the orange voice clip to position it within each bed. Trim the voice once in the Voice segment selector above; press Generate to write new beds for it.</p></div></aside><section class="audios"><div class="panel"><div class="sectiontitle"><div><h2>Music beds <span id="total" class="badge">0</span></h2><p class="sub">Select a bed to play. Drag the blue handles to adjust its levels. Drag the orange clip to move the voice.</p></div><button id="export" class="primary">↓ Export ♥</button></div><div class="toolbar" style="margin-bottom:10px"><button class="pill selected" id="all">All mixes</button><button class="pill" id="favorites">♥ Favorites</button><button class="pill" id="next">▶ Next mix</button><span class="status push" id="progress"></span></div><div class="listShell"><div id="abovePlaying" class="playingDirection above" role="button" tabindex="0" title="Jump to playing track"><span>↑ Playing track</span></div><div id="list"><div class="empty">Select the part of the read to use, pick a bed length, then press Generate. New beds are always added at the bottom.</div></div><div id="belowPlaying" class="playingDirection below" role="button" tabindex="0" title="Jump to playing track"><span>↓ Playing track</span></div></div></div></section></main>
@@ -1045,7 +1045,7 @@ const FOLKG=new Set(['folk','americana','campfire','world','chamber']),POPG=new 
 const domG=o=>{if(o.blend){let b=null,w=-1;for(const k in o.blend)if(o.blend[k]>w){w=o.blend[k];b=k}return b}return o.genre};
 const MINE_KNEE=0.25;
 async function pickAny(seed,avoid,faith,gk){
- if(window.PBC_MINE_N>0&&window.UL){const R0=rng((seed^0xA11CE5)>>>0);
+ if(window.PBCSourceMode==='audio'&&window.PBC_MINE_N>0&&window.UL){const R0=rng((seed^0xA11CE5)>>>0);
   {try{const F0=faith??.7,fresh=F0<MINE_KNEE;
    const pc=fresh?(await UL.compose(R0))||await UL.pick(R0)
      :((F0>=.5&&UL.pickPlayable?await UL.pickPlayable(R0):null)||await UL.pick(R0));
@@ -2077,7 +2077,7 @@ async function render(o,onStep){DC=o.ctx;if(o.source&&o.source!='original'&&!o.p
       'at '+Math.round(mg*100)+'% against the arrangement at '+Math.round(o.compGain*100)+'%')+' — '+o.piece.title)}
   }catch(e){console.warn('[PromoMixer] could not use your recording',e)}}}
 // At the original-recording endpoint, never enter the synthesis or mastering graph.
-if((o.faith??.7)>=.985&&window.PBC_MINE_N>0){
+if((o.faith??.7)>=.985&&window.PBC_MINE_N>0&&!o.piece?.noAudio&&window.PBCSourceMode==='audio'){
  if(!o.mineBuf)throw new Error('Original recording unavailable; reselect the source file. No arrangement substituted.');
  const b=o.mineBuf,L=o.L,sr=b.sampleRate,n=Math.max(1,Math.round(L*sr)),out=DC.createBuffer(2,n,sr);
  for(let ch=0;ch<2;ch++){const src=b.getChannelData(Math.min(ch,b.numberOfChannels-1)),dst=out.getChannelData(ch);dst.set(src.subarray(0,n))}
@@ -2630,8 +2630,8 @@ globalThis.__PBCWAVDISK=()=>{let n=0;for(const t of s.tracks)if(t.ofs)n+=t.fsize
 function queueBed(t,quiet){t.L=s.duration;t.A=analysis();t.readLabel=`read ${fmt(t.read[0])}–${fmt(t.read[1])} · ${t.L}s bed`;s.queue.push(t);s.total++;if(!quiet){progress(`${s.queue.length} bed${s.queue.length>1?'s':''} waiting`);work()}}
 let LASTGEN=0;
 let preparingBatch=false;
-async function composeNew(n){if(preparingBatch||s.working||s.queue.length)return;const now=Date.now();if(now-LASTGEN<600)return;LASTGEN=now;if(!s.voice){setStatus('Add a voice recording first');return}const ids=GEN.map(g=>g.id).filter(k=>s.gw[k]>0);if(!s.randGenre&&!ids.length){setStatus('Turn up at least one genre in the genre mix');return}preparingBatch=true;try{if(window.PBCPrepareLibrary)await window.PBCPrepareLibrary(n)}catch(e){setStatus('Library analysis failed: '+e.message);return}finally{preparingBatch=false}const base=selectionSeed(),batch=s.batches[base]=(s.batches[base]||0)+1,R=(a=>()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296})(base^batch);
-const blend={};for(const k of ids)blend[k]=s.gw[k];for(let i=0;i<n;i++){const sd=(base^Math.imul(batch*16+i+1,0x9E3779B1))>>>0,src='library';const bl=s.randGenre?randomBlend(sd):blend;const nb0=newBed('mix',sd,src,bl);nb0.faith=s.src/100;queueBed(nb0,1)}progress(`${s.queue.length} bed${s.queue.length>1?'s':''} waiting`);work();setStatus(`Generating ${n} beds for ${fmt(s.start)}–${fmt(s.start+s.voiceLength)} · ${s.duration}s`);render()}
+async function composeNew(n){if(preparingBatch||s.working||s.queue.length)return;const now=Date.now();if(now-LASTGEN<600)return;LASTGEN=now;if(!s.voice){setStatus('Add a voice recording first');return}const ids=GEN.map(g=>g.id).filter(k=>s.gw[k]>0);if(!s.randGenre&&!ids.length){setStatus('Turn up at least one genre in the genre mix');return}let batchPiece=null;preparingBatch=true;try{if(window.PBCPrepareLibrary)batchPiece=await window.PBCPrepareLibrary(n)}catch(e){setStatus('Library analysis failed: '+e.message);return}finally{preparingBatch=false}const base=selectionSeed(),batch=s.batches[base]=(s.batches[base]||0)+1,R=(a=>()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296})(base^batch);
+const blend={};for(const k of ids)blend[k]=s.gw[k];for(let i=0;i<n;i++){const sd=(base^Math.imul(batch*16+i+1,0x9E3779B1))>>>0,src='library';const bl=s.randGenre?randomBlend(sd):blend;const nb0=newBed('mix',sd,src,bl);nb0.faith=batchPiece?Math.min(.95,s.src/100):s.src/100;nb0.piece=batchPiece?{...batchPiece}:null;queueBed(nb0,1)}progress(`${s.queue.length} bed${s.queue.length>1?'s':''} waiting`);work();setStatus(`Generating ${n} beds for ${fmt(s.start)}–${fmt(s.start+s.voiceLength)} · ${s.duration}s`);render()}
 function analysis(){const key=[s.start,s.voiceLength,JSON.stringify(s.skips),s.voiceRevision].join('|');if(!s.analysis||s.analysis.key!==key){s.analysis={key,A:PBC.analyze(s.env,pieces(),s.voice)}}return s.analysis.A}
 // pick N weights 1-100, scale them so the biggest is 100, then hand them to N genres at random
 function randomBlend(seed){const R=(a=>()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296})((seed^0xc0ffee)>>>0);
@@ -3275,7 +3275,7 @@ select{padding-right:36px;cursor:pointer;
 })();
 </script>
 
-<script>window.PBC_VERSION="v136";window.PBC_BUILT="2026-11-18 04:02 UTC";try{console.log("[PromoMixer] build "+window.PBC_VERSION+" ("+window.PBC_BUILT+")")}catch(e){}</script>
+<script>window.PBC_VERSION="v137";window.PBC_BUILT="2026-11-25 03:27 UTC";try{console.log("[PromoMixer] build "+window.PBC_VERSION+" ("+window.PBC_BUILT+")")}catch(e){}</script>
 <script>
 /* ---------- your own music as source material ---------- */
 (function(){
@@ -3283,10 +3283,10 @@ select{padding-right:36px;cursor:pointer;
  const d=document.createElement('details');d.className='creditsBox';d.id='mineBox';
  d.innerHTML='<summary>Your music library <b id="mineCount">(0)</b></summary>'+
   '<div class="mineBody">'+
-  '<p class="sub">Point this at your own WAV or MP3 files. Files wait until you generate beds. Only the next requested batch is analysed for key, tempo, chords and melody. The audio itself is never stored or uploaded.</p>'+
+  '<p class="sub">Choose one recording to seed all beds, or use the built-in MIDI library. The recording is analysed locally only when you generate.</p>'+
   '<div class="mineRow">'+
-   '<label class="minePick">Choose folder<input id="mineDir" type="file" webkitdirectory multiple hidden></label>'+
-   '<label class="minePick">Choose files<input id="mineFiles" type="file" accept="audio/*" multiple hidden></label>'+
+   '<label>Music source <select id="mineMode"><option value="midi">Built-in MIDI</option><option value="audio">My recording</option></select></label>'+
+   '<label class="minePick">Choose recording<input id="mineFiles" type="file" accept="audio/*" hidden></label>'+
    '<button id="mineClear" class="minePick">Clear</button>'+
   '</div>'+
   '<label class="mineStem hidden" id="mineStemRow">'+'<span><b id="mineStemOn">Separating stems</b>'+'<span class="sub">Splits each track into vocals, drums, bass and the rest, then reads the key and '+'chords from the pitched parts alone — a full mix smears them with cymbals and kick spill. '+'Much more accurate, and much slower. It runs here on your machine; nothing is uploaded.</span></span></label>'+'<div id="mineProg" class="sub"></div>'+'<div id="mineHealth" class="sub"></div>'+
@@ -3304,34 +3304,17 @@ select{padding-right:36px;cursor:pointer;
     el.textContent=bits.join(' \u00b7 ');
     el.className='sub'+(st.stale||st.playable<st.n?' mineWarn':'')}).catch(()=>{});
    $$('mineRule').textContent=n
-     ?'Beds are composed from these '+n+' piece'+(n>1?'s':'')+'. The source slider above decides how literally \u2014 all the way to the right plays the recording itself.'
+     ?'All beds in this batch use the selected recording as musical inspiration.'
      :'No active recordings. Choose files and generate beds to use your own music.';
    return n}catch(e){return 0}};
  const prog=t=>{$$('mineProg').textContent=t};
- const pending=new Map();
- function take(files){for(const f of files||[]){if(!/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name))continue;const k=[f.webkitRelativePath||f.name,f.size,f.lastModified].join('|');if(!pending.has(k))pending.set(k,f)}prog(pending.size+' files waiting for generation');}
- window.PBCPrepareLibrary=async function(n){const entries=[...pending.entries()].slice(0,n);if(!entries.length)return;const files=entries.map(x=>x[1]);
-  prog('Reading '+files.length+' file'+(files.length>1?'s':'')+'…');
-  const t0=performance.now();
-  const useStems=window.PBC_STEMS!==false;
-  const r=await UL.ingest(files,x=>{
-   if(x.done){prog('');return}
-   if(x.stage){prog(x.stage+' '+Math.round((x.frac||0)*100)+'% — '+(x.i+1)+' of '+x.n+' — '+(x.name||'').slice(0,34));return}
-   prog('Analysing '+(x.i+1)+' of '+x.n+' — '+(x.name||'').slice(0,42));
-  },{stems:useStems,limit:n});
-  for(const [k] of entries)pending.delete(k);
-  await count();
-  prog(pending.size+' waiting · Added '+r.ok+(r.skip?', '+r.skip+' already there':'')+(r.fail?', '+r.fail+' unreadable':'')+
-   ' · '+Math.round((performance.now()-t0)/1000)+'s');
- }
- $$('mineDir').onchange=e=>take(e.target.files);
- $$('mineFiles').onchange=e=>take(e.target.files);
- let armed=0;
- $$('mineClear').onclick=async()=>{
-  if(!armed){armed=1;$$('mineClear').textContent='Really clear?';
-   setTimeout(()=>{armed=0;$$('mineClear').textContent='Clear'},4000);return}
-  armed=0;$$('mineClear').textContent='Clear';
-  pending.clear();await UL.clear();await count();prog('Library cleared')};
+ let selectedFile=null;
+ window.PBCSourceMode='midi';
+ function take(files){if(preparingBatch||s.working||s.queue.length){prog('Wait until generation finishes');return}const list=[...files].filter(f=>/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name));if(list.length!==1){prog('Choose exactly one audio file');return}selectedFile=list[0];UL.resetSelection();window.PBCSourceMode='audio';$$('mineMode').value='audio';count();prog(selectedFile.name+' — ready to analyse');}
+ window.PBCPrepareLibrary=async function(){if(window.PBCSourceMode!=='audio')return null;if(!selectedFile)throw Error('Choose one recording first');UL.resetSelection();const r=await UL.ingest([selectedFile],x=>{if(!x.done)prog((x.stage||'Analysing')+' '+Math.round((x.frac||0)*100)+'% — '+selectedFile.name)},{stems:false,limit:1});await count();if(r.fail||!await UL.count())throw Error('Recording could not be analysed');const p=await UL.pick(()=>0);if(!p)throw Error('No usable score');p._i='u:'+p.k;p.noAudio=1;prog('Ready — '+selectedFile.name);return p};
+ $$('mineFiles').onchange=e=>{take(e.target.files);e.target.value=''};
+ $$('mineMode').onchange=e=>{if(preparingBatch||s.working||s.queue.length){e.target.value=window.PBCSourceMode;return}window.PBCSourceMode=e.target.value;UL.resetSelection();count()};
+ $$('mineClear').onclick=()=>{if(preparingBatch||s.working||s.queue.length)return;selectedFile=null;UL.resetSelection();count();prog('No recording selected')};
  ['dragover','drop'].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();
   if(ev==='drop'&&e.dataTransfer&&e.dataTransfer.files&&e.target.closest('.mineBody'))take(e.dataTransfer.files)}));
  count();
