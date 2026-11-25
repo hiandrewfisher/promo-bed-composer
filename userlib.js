@@ -256,7 +256,9 @@ async function one(f,useStems,onStage){
  return 'ok';
 }
 
+const activeKeys=new Set();
 const UL={
+ resetSelection(){activeKeys.clear();window.PBC_MINE_N=0},
  /* the recording itself, read back on demand */
  async audio(piece){
   if(!piece)return null;
@@ -307,7 +309,7 @@ const UL={
    onProgress&&onProgress({i,n:list.length,name:f.name,ok,skip,fail});
    try{const r=await one(f,opts&&opts.stems,(m,p)=>
      onProgress&&onProgress({i,n:list.length,name:f.name,ok,skip,fail,stage:m,frac:p}));
-    r==='ok'?ok++:r==='skip'?skip++:fail++}
+    if(r==='ok'||r==='skip')activeKeys.add(keyOf(f));r==='ok'?ok++:r==='skip'?skip++:fail++}
    catch(e){fail++;log('failed',f.name,e.message)}
    await new Promise(r=>requestAnimationFrame(()=>r()));
   }
@@ -360,20 +362,20 @@ const UL={
    composer:'Your library',mode:modeVote<0?'min':'maj',bar,len,mel,chords,phr,
    key,bpm:+bpm.toFixed(1),arc:arc.map(v=>+(v/am).toFixed(3)),mine:1,blended:used.size};
  },
- count(){return tx('readonly',s=>s.count())},
- keys(){return tx('readonly',s=>s.getAllKeys())},
- all(){return tx('readonly',s=>s.getAll())},
+ count(){return Promise.resolve(activeKeys.size)},
+ keys(){return Promise.resolve([...activeKeys])},
+ async all(){return (await Promise.all([...activeKeys].map(k=>tx('readonly',s=>s.get(k))))).filter(Boolean)},
  async pick(r){
   const ks=await UL.keys();if(!ks.length)return null;
   const k=ks[Math.floor(r()*ks.length)%ks.length];
   return tx('readonly',s=>s.get(k));
  },
- async clear(){dbp=null;
+ async clear(){UL.resetSelection();dbp=null;
   try{const d=await dir();if(d)for await (const nm of d.keys())await d.removeEntry(nm).catch(()=>{})}catch(e){}
   return new Promise(res=>{const q=indexedDB.deleteDatabase(DB);
    q.onsuccess=q.onerror=q.onblocked=()=>{log('library cleared');res()}})},
  shut
 };
 window.UL=UL;
-UL.count().then(n=>{window.PBC_MINE_N=n;log('ready,',n,'pieces stored')}).catch(e=>log('store unavailable',e.message));
+window.PBC_MINE_N=0;log('ready, no active files; cached analysis retained');
 })();
