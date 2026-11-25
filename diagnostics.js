@@ -185,10 +185,10 @@
  const D=window.__PBCDIAG;if(!D)return;
  const key='pbc.diag.breadcrumbs',sid=D.sid,now=()=>performance.now();
  let seq=0,ring=[],active=new Map(),last=now(),dirty=false;
- const old=localStorage.getItem(key);
+ let old;try{old=localStorage.getItem(key)}catch(e){}
  try{if(old)localStorage.setItem(key+'.previous',old)}catch(e){}
- function flush(){try{localStorage.setItem(key,JSON.stringify({sid,at:Date.now(),active:[...active.values()].slice(0,100),events:ring}));dirty=false}catch(e){}}
- function log(type,data={},urgent=false){ring.push({n:++seq,t:Math.round(now()),type,...data});if(ring.length>256)ring.shift();dirty=true;if(urgent)flush()}
+ let lastFlush=-1000,flushMs=0,flushCount=0;function flush(){const t=now();try{localStorage.setItem(key,JSON.stringify({sid,at:Date.now(),active:[...active.values()].slice(0,100),events:ring}));dirty=false;lastFlush=t;flushCount++;flushMs+=now()-t}catch(e){}}
+ function log(type,data={},urgent=false){ring.push({n:++seq,t:Math.round(now()),type,...data});if(ring.length>256)ring.shift();dirty=true;if(urgent&&now()-lastFlush>250)flush()}
  function size(x){return x?.byteLength??x?.size??(x?.length&&x?.numberOfChannels?x.length*x.numberOfChannels*4:0)}
  function wrap(o,k,label,meta){if(!o||typeof o[k]!=='function'||o[k].__pbcTrace)return;const f=o[k];function traced(...a){let id=++seq,t=now(),d={id,label,...(meta?meta(a,this):{})};active.set(id,d);log('begin',d,true);function end(ok,v){active.delete(id);log(ok?'end':'error',{id,label,ms:Math.round(now()-t),bytes:size(v),error:ok?undefined:String(v).slice(0,300)},!ok);return v}try{let v=f.apply(this,a);if(v&&typeof v.then==='function'){v.then(x=>end(true,x),e=>end(false,e));return v}return end(true,v)}catch(e){end(false,e);throw e}}traced.__pbcTrace=true;try{o[k]=traced}catch(e){}}
  wrap(window,'fetch','fetch',a=>({url:String(a[0]?.url??a[0]).split('?')[0].slice(0,200)}));
@@ -208,6 +208,23 @@
  document.addEventListener('visibilitychange',()=>log('visibility',{state:document.visibilityState},true));
  try{new PerformanceObserver(l=>{for(const e of l.getEntries())log('longtask',{ms:Math.round(e.duration)})}).observe({type:'longtask',buffered:true})}catch(e){}
  const stage=D.stage;D.stage=function(name){log('stage',{name},true);return stage.apply(this,arguments)};
- const timer=setInterval(()=>{let t=now(),m=performance.memory;log('heartbeat',{lag:Math.max(0,Math.round(t-last-1000)),heap:m?.usedJSHeapSize,limit:m?.jsHeapSizeLimit,active:active.size});last=t;const ort=window.ort;wrap(ort?.InferenceSession,'create','onnx.create',a=>({bytes:size(a[0])}));wrap(ort?.InferenceSession?.prototype,'run','onnx.run');wrap(ort?.InferenceSession?.prototype,'release','onnx.release');if(dirty)flush()},1000);
+ const timer=setInterval(()=>{let t=now(),m=performance.memory;log('heartbeat',{lag:Math.max(0,Math.round(t-last-1000)),heap:m?.usedJSHeapSize,limit:m?.jsHeapSizeLimit,active:active.size,flushMs,flushCount});last=t;const ort=window.ort;wrap(ort?.InferenceSession,'create','onnx.create',a=>({bytes:size(a[0])}));wrap(ort?.InferenceSession?.prototype,'run','onnx.run');wrap(ort?.InferenceSession?.prototype,'release','onnx.release');if(dirty)flush()},1000);
  D.trace=log;D.breadcrumbs=()=>({sid,active:[...active.values()],events:ring.slice()});D.previousBreadcrumbs=()=>JSON.parse(localStorage.getItem(key+'.previous')||'null');
+})();
+
+/* Supplemental proxies: no strong references to resources. */
+(function(){
+ const D=window.__PBCDIAG;if(!D?.trace)return;
+ const log=D.trace, ids=new WeakMap();let next=0;
+ function id(o){if(!ids.has(o))ids.set(o,++next);return ids.get(o)}
+ function patch(o,k,cb){if(!o||typeof o[k]!=='function')return;const f=o[k];try{o[k]=function(...a){return cb.call(this,f,a)}}catch(e){}}
+ function ctor(k,cb){const C=window[k];if(!C)return;try{window[k]=new Proxy(C,{construct(t,a,n){const o=Reflect.construct(t,a,n);cb(o,a);return o}})}catch(e){}}
+ ctor('Worker',(w,a)=>{const n=id(w);log('worker.create',{id:n,url:String(a[0]).split('?')[0]},true);w.addEventListener('error',e=>log('worker.error',{id:n,message:e.message},true));w.addEventListener('messageerror',()=>log('worker.messageerror',{id:n},true))});
+ patch(window.Worker?.prototype,'terminate',function(f,a){log('worker.terminate',{id:id(this)},true);return f.apply(this,a)});
+ let messages=0,bytes=0;
+ patch(window.Worker?.prototype,'postMessage',function(f,a){messages++;const x=a[1]?.transfer||a[1];if(Array.isArray(x))for(const b of x)bytes+=b?.byteLength||0;return f.apply(this,a)});
+ const seen=new WeakSet();function tensor(t,kind){if(!t||typeof t!=='object'||seen.has(t))return;seen.add(t);let count=Array.isArray(t.dims)?t.dims.reduce((a,b)=>a*b,1):0;log('tensor.observe',{id:id(t),kind,count,type:t.type});}
+ function install(){const ort=window.ort,p=ort?.InferenceSession?.prototype;if(p&&!p.__pbcTensor){p.__pbcTensor=true;patch(p,'run',function(f,a){for(const t of Object.values(a[0]||{}))tensor(t,'input');const v=f.apply(this,a);v.then(out=>{for(const t of Object.values(out||{}))tensor(t,'output')},()=>{});return v})}const tp=ort?.Tensor?.prototype;if(tp&&!tp.__pbcDispose){tp.__pbcDispose=true;patch(tp,'dispose',function(f,a){log('tensor.dispose',{id:id(this)});return f.apply(this,a)})}}
+ setInterval(()=>{install();log('worker.traffic',{messages,transferBytes:bytes});messages=bytes=0},1000);
+ D.trace('diagnostics.version',{version:2},true);
 })();
