@@ -162,10 +162,19 @@ const shut=()=>{if(W){W.terminate();W=null;log('worker released')}
   if(AC44){AC44.close().catch(()=>{});AC44=null}
   if(window.STEMS)STEMS.release();};
 
+/* Bumped whenever the analysis itself changes, so pieces read by an older
+   version can be found and done again. 2: Pearson key correlation (every major
+   key used to come back minor), per-out-tone chord penalty, energy-weighted
+   chroma, mode settled by the chords, and stems where available. */
+const AV=2;
 const keyOf=f=>f.name+'|'+f.size;
 const safe=k=>k.replace(/[^A-Za-z0-9._-]+/g,'_').slice(0,120);
 let DIR=null;
 async function dir(){if(DIR)return DIR;
+ // without this the browser may evict the stored recordings whenever it likes,
+ // and then "as written" has nothing to play
+ try{if(navigator.storage&&navigator.storage.persist&&!(await navigator.storage.persisted()))
+  log('storage persistence',await navigator.storage.persist()?'granted':'refused — the browser may evict stored audio')}catch(e){}
  try{const root=await navigator.storage.getDirectory();DIR=await root.getDirectoryHandle('mine',{create:true})}
  catch(e){log('no private file system; audio will not be kept',e.message);DIR=false}
  return DIR}
@@ -175,7 +184,10 @@ async function keep(f,k){const d=await dir();if(!d)return null;
   await w.write(f);await w.close();return nm}
  catch(e){log('could not keep the audio for',f.name,e.message);return null}}
 
-async function has(k){return !!(await tx('readonly',s=>s.get(k)))}
+async function has(k){const p=await tx('readonly',s=>s.get(k));
+ if(!p)return false;
+ if((p.av||0)<AV){log('re-reading',p.title,'— analysed by an older version');return false}
+ return true}
 
 function analyse(mono,sr,name){
  const w=worker();
@@ -237,7 +249,7 @@ async function one(f,useStems,onStage){
  mono=null;
  if(extra)Object.assign(piece,extra);
  piece.k=k;piece.added=Date.now();piece.bytes=f.size;
- piece.audio=await keep(f,k);piece.type=f.type||'';
+ piece.audio=await keep(f,k);piece.type=f.type||'';piece.av=AV;
  await tx('readwrite',s=>s.put(piece));
  // the decoder holds memory of its own; give it back every so often
  if(++since>=12){since=0;if(AC){try{await AC.close()}catch(e){}AC=null;log('decoder recycled')}}
@@ -246,8 +258,43 @@ async function one(f,useStems,onStage){
 
 const UL={
  /* the recording itself, read back on demand */
- async audio(piece){if(!piece||!piece.audio)return null;const d=await dir();if(!d)return null;
-  try{return await (await d.getFileHandle(piece.audio)).getFile()}catch(e){log('audio missing for',piece.title);return null}},
+ async audio(piece){
+  if(!piece)return null;
+  if(!piece.audio){log('no audio was ever stored for',piece.title);return null}
+  const d=await dir();if(!d)return null;
+  try{return await (await d.getFileHandle(piece.audio)).getFile()}
+  catch(e){log('the stored audio for',piece.title,'is gone (the browser evicted it, or it never finished writing)');return null}},
+
+ /* what the library actually has, which decides whether "as written" can play
+    anything at all */
+ async stats(){
+  const all=await UL.all();
+  let withAudio=0,stale=0,playable=0;
+  const d=await dir();
+  for(const p of all){
+   if((p.av||0)<AV)stale++;
+   if(!p.audio)continue;
+   withAudio++;
+   if(d){try{await d.getFileHandle(p.audio);playable++}catch(e){}}
+  }
+  return {n:all.length,withAudio,playable,stale};
+ },
+
+ /* at the "as written" end the point is the recording, so pick something whose
+    audio is really there rather than landing on a piece that can only be played
+    as an arrangement */
+ async pickPlayable(r){
+  const all=await UL.all();
+  const d=await dir();
+  const ok=[];
+  for(const p of all){
+   if(!p.audio||!p.chords||!p.chords.length||!p.mel||p.mel.length<4)continue;
+   if(d){try{await d.getFileHandle(p.audio)}catch(e){continue}}
+   ok.push(p);
+  }
+  if(!ok.length)return null;
+  return ok[Math.floor(r()*ok.length)%ok.length];
+ },
 
  async ingest(files,onProgress,opts){
   const list=[...files].filter(f=>/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name));
