@@ -5,6 +5,10 @@ on:
     paths:
       - diagnostics.js
       - index.html
+      - userlib.js
+      - quality.js
+      - pitch-worker.js
+      - quality-test.cjs
       - .github/workflows/browser-diagnostics.yml
 jobs:
   smoke:
@@ -13,6 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: node --check diagnostics.js
+      - run: node quality-test.cjs
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
       - run: |
