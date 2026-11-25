@@ -132,33 +132,45 @@
    checkpoint(s);
    return s;
  }
+ /* Preserve the last session's checkpoint before writing a new one. */
+ try{var previous=JSON.parse(localStorage.getItem('pbc.diag.last')||'null');if(previous&&previous.sid!==SID)localStorage.setItem('pbc.diag.last.previous',JSON.stringify(previous))}catch(e){}
  /* compact emergency checkpoint: survives a renderer kill */
  function checkpoint(s){
    try{ localStorage.setItem('pbc.diag.last', JSON.stringify({sid:SID,at:Date.now(),snap:s})) }catch(e){}
  }
 
  /* ---- IndexedDB, bounded batches -------------------------------------- */
- var db=null, qSnap=[], qEv=0;
- try{ var rq=indexedDB.open('pbc-diag',1);
-   rq.onupgradeneeded=function(e){ var d=e.target.result;
-     if(!d.objectStoreNames.contains('sessions')) d.createObjectStore('sessions',{keyPath:'sid'});
-     if(!d.objectStoreNames.contains('snaps')) d.createObjectStore('snaps',{autoIncrement:true}).createIndex('sid','sid');
-     if(!d.objectStoreNames.contains('events')) d.createObjectStore('events',{autoIncrement:true}).createIndex('sid','sid'); };
-   rq.onsuccess=function(e){ db=e.target.result; put('sessions',{sid:SID,started:T0,ua:navigator.userAgent,clean:false}); };
- }catch(e){}
- function put(store,val){ if(!db) return; try{ var tx=db.transaction(store,'readwrite'); tx.objectStore(store).put(val) }catch(e){} }
- function add(store,val){ if(!db) return; try{ var tx=db.transaction(store,'readwrite'); tx.objectStore(store).add(val) }catch(e){} }
-
- var tick=setInterval(function(){
-   var s=snapshot(); if(!s) return;
-   add('snaps',{sid:SID,s:s});
-   if(EV.length){ var batch=EV.splice(0,Math.min(EV.length,500)); add('events',{sid:SID,t:s.t,e:batch}); }
- },1000);
-
- window.addEventListener('pagehide',function(){
-   try{ var s=snapshot(); add('snaps',{sid:SID,s:s}); put('sessions',{sid:SID,started:T0,ua:navigator.userAgent,clean:true}) }catch(e){}
- });
-
+ var db=null, opening=false, pending=null, nextOpen=0, registered=false, dbState='opening';
+ function dbStatus(state,error){dbState=state;try{localStorage.setItem('pbc.diag.storage',JSON.stringify({sid:SID,at:Date.now(),state,error:error?String(error):null}))}catch(e){}}
+ function disconnect(state,error){var d=db;db=null;registered=false;pending=null;nextOpen=Date.now()+30000;if(d)try{d.close()}catch(e){}dbStatus(state,error)}
+ function connect(){if(db||opening||Date.now()<nextOpen)return;opening=true;dbStatus('opening');
+   try{var rq=indexedDB.open('pbc-diag');var deadline=st.call(window,function(){dbStatus('open-timeout','IndexedDB did not answer; using local checkpoint');},8000);
+     rq.onupgradeneeded=function(e){var d=e.target.result;
+       if(!d.objectStoreNames.contains('sessions'))d.createObjectStore('sessions',{keyPath:'sid'});
+       if(!d.objectStoreNames.contains('snaps'))d.createObjectStore('snaps',{autoIncrement:true}).createIndex('sid','sid');
+       if(!d.objectStoreNames.contains('events'))d.createObjectStore('events',{autoIncrement:true}).createIndex('sid','sid')};
+     rq.onsuccess=function(){ct.call(window,deadline);opening=false;db=rq.result;registered=false;var d=db;
+       d.onversionchange=function(){if(db===d)disconnect('versionchange');else d.close()};
+       d.onclose=function(){if(db===d)disconnect('closed')};dbStatus('ready')};
+     rq.onerror=function(){ct.call(window,deadline);opening=false;disconnect('open-error',rq.error)};
+     rq.onblocked=function(){dbStatus('blocked','Another connection is blocking IndexedDB')};
+   }catch(e){opening=false;disconnect('open-error',e)}
+ }
+ function persist(s,clean){if(!db||pending)return false;
+   var tx,batch=EV.slice(0,500),d=db;
+   try{tx=d.transaction(['sessions','snaps','events'],'readwrite');pending=tx;
+     var timer=st.call(window,function(){if(pending!==tx)return;try{tx.abort()}catch(e){}disconnect('write-timeout','Diagnostic storage did not complete; using local checkpoint')},8000);
+     tx.oncomplete=function(){ct.call(window,timer);if(pending!==tx)return;pending=null;registered=true;EV.splice(0,Math.min(EV.length,batch.length))};
+     tx.onerror=tx.onabort=function(){ct.call(window,timer);if(pending===tx)disconnect('write-error',tx.error)};
+     if(!registered||clean)tx.objectStore('sessions').put({sid:SID,started:T0,ua:navigator.userAgent,clean:!!clean});
+     if(s)tx.objectStore('snaps').add({sid:SID,s:s});
+     if(batch.length)tx.objectStore('events').add({sid:SID,t:s?s.t:Date.now()-T0,e:batch});
+     return true;
+   }catch(e){if(tx)try{tx.abort()}catch(err){}disconnect('write-error',e);return false}
+ }
+ connect();
+ var tick=setInterval(function(){var s=snapshot();if(!s)return;connect();persist(s,false)},1000);
+ window.addEventListener('pagehide',function(){try{var s=snapshot();if(s)persist(s,true)}catch(e){}});
  /* ---- console surface -------------------------------------------------- */
  function table(){ var s=snapshot(), rows=[];
    for(var k in s.res){ var c=s.res[k]; if(!c.made) continue;
@@ -173,7 +185,7 @@
    counters:function(){ return JSON.parse(JSON.stringify(R)) },
    snaps:function(){ return SNAPS.slice() },
    exportJSON:function(){ return JSON.stringify({sid:SID,started:T0,snaps:SNAPS,events:EV},null,1) },
-   clear:function(){ try{ indexedDB.deleteDatabase('pbc-diag'); localStorage.removeItem('pbc.diag.last') }catch(e){} }
+   clear:function(){if(!db||pending)return false;try{var tx=db.transaction(['sessions','snaps','events'],'readwrite');for(var k of ['sessions','snaps','events'])tx.objectStore(k).clear();tx.oncomplete=function(){registered=false;try{localStorage.removeItem('pbc.diag.last');localStorage.removeItem('pbc.diag.last.previous')}catch(e){}};return true}catch(e){return false}}
  };
  try{ console.log('[PromoMixer] resource ledger on — session '+SID+
    '. __PBCDIAG.table() for the live counts, diagnostics.html for previous sessions.') }catch(e){}
