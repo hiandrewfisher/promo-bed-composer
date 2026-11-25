@@ -109,18 +109,19 @@ function arrange(c,o){
  const active=bins.filter(b=>b.fg+b.bg>.003), crowded=mean(active.map(b=>clamp((b.parts.size-5)/4))),competition=mean(active.map(b=>b.fg>.05?clamp((b.fg-b.bg*.9)/Math.max(.1,b.fg))*.15+clamp((b.parts.size-4)/5)*.35:0)), density=active.length/N;
  const varied=durations.length>2?clamp((Math.max(...durations)-Math.min(...durations))/Math.max(.35,mean(durations))* .65):.5, hook=contour.length>5?mean(contour.slice(3).map((x,i)=>x===contour[i]?1:0)):.5;
  const melody=line.length?clamp(.77-.48*mean(leaps)-.65*unresolved/line.length+.10*varied+.08*hook):.65, harmony=clamp(1-2.1*clash/Math.max(.001,weight)), space=clamp(1-.65*crowded-.55*competition-.75*voice/Math.max(.001,weight)), flow=clamp(.65+.35*density-.6*out/Math.max(.001,weight)), dynamics=clamp(.6+.2*varied+.2*mean(gaps.map(g=>g>.07?1:0))), fit=(c.meta.fit?.inKey||70)/100;
- const score=100*(.26*melody+.23*harmony+.23*space+.14*flow+.09*dynamics+.05*fit);
- return{score:round(score),melody:round(melody),harmony:round(harmony),space:round(space),flow:round(flow),dynamics:round(dynamics),voiceFit:round(fit),leadNotes:line.length};
+ const band=ensemble(notes,role,L),score=100*(.24*melody+.17*harmony+.16*space+.12*flow+.08*dynamics+.05*fit+.10*band.harmony+.08*band.collaboration);
+ return{score:round(score),melody:round(melody),harmony:round(harmony),space:round(space),flow:round(flow),dynamics:round(dynamics),voiceFit:round(fit),ensembleHarmony:round(band.harmony),collaboration:round(band.collaboration),responseShare:round(band.responseShare),leadNotes:line.length};
 }
 function support(notes,P,o){
- if(!P||P.amount<=0||o.ch||o.solo)return;
- const role=P.grammar?.role||'lead',focal=notes.filter(n=>n.r.name===role&&n.focus&&!n.uni&&!n.sym),scale=clamp(P.amount/3),bins=new Set();
+ if(!P||P.amount<=0)return;
+ const role=P.grammar?.role||'lead',focal=notes.filter(n=>n.r.name===role&&n.focus&&!n.uni&&!n.sym),scale=clamp(P.amount/3),bins=new Set(),leadBins=new Map();
+ for(const n of notes){if(n.r.name!==role||n.uni||n.sym||n.skip)continue;for(let i=Math.floor(n.t*8);i<Math.ceil((n.t+n.dur)*8);i++){const a=leadBins.get(i)||[];a.push(n);leadBins.set(i,a)}}
  for(const n of focal)for(let i=Math.floor(n.t*8);i<=Math.ceil((n.t+Math.min(1.5,n.dur))*8);i++)bins.add(i);
- let softened=0,restrained=0;
+ let softened=0,restrained=0,answers=0,clashSoftened=0;
  for(const n of notes){if(n.r.fx||n.opening||n.r.name===role||/^(bass|sub)$/.test(n.r.name))continue;const name=n.r.name;if(bins.has(Math.floor(n.t*8))&&/^(counter|dbl|color|riff|pulse|keys2)$/.test(name)){n.v*=1-scale*(/^(counter|dbl|color)$/.test(name)?.30:.13);softened++}
-  if(n.pressure&&/^(pad|pad2|keys2|dbl|counter|color|pulse)$/.test(name)){n.pressure.vibrato*=.7;n.pressure.tremolo*=.72;restrained++}
+  const active=leadBins.get(Math.floor(n.t*8))||[],respond=/^(counter|color|riff)$/.test(name),collision=active.some(a=>[1,13].includes(Math.abs(a.m-n.m))&&!a.intentional&&!n.intentional);if(collision){n.v*=1-.38*scale;clashSoftened++}if(respond&&!active.length){answers++;}else if(n.pressure&&/^(pad|pad2|keys2|dbl|counter|color|pulse)$/.test(name)){n.pressure.vibrato*=1-.30*scale;n.pressure.tremolo*=1-.28*scale;restrained++}
  }
- P.producer={version:1,foreground:role,focalNotes:focal.length,softened,restrained};
+ P.producer={version:2,foreground:role,focalNotes:focal.length,softened,restrained,answers,clashSoftened};
 }
 function inspect(buffer){
  const sr=buffer.sampleRate,hop=Math.max(8,Math.floor(sr/20)),n=buffer.length,channels=Array.from({length:buffer.numberOfChannels},(_,i)=>buffer.getChannelData(i)),env=[];let peak=0,invalid=0,first=null,total=0,count=0,clip=0;
@@ -128,5 +129,30 @@ function inspect(buffer){
  const active=env.filter(x=>x>.001).sort((a,b)=>a-b),q=x=>active[Math.floor((active.length-1)*x)]||1e-9,db=x=>20*Math.log10(Math.max(1e-9,x));
  return{sampleStride:8,firstAudibleSeconds:first,peakDb:round(db(peak)),rmsDb:round(db(Math.sqrt(total/Math.max(1,count)))),dynamicSpreadDb:round(db(q(.9)/q(.1))),silenceShare:round(1-active.length/Math.max(1,env.length)),sampledClips:clip,sampledInvalid:invalid,pass:invalid===0&&first!==null&&first<=.15&&clip===0};
 }
-root.PBCProducer={phrase,direct,shape,arrange,support,inspect};
+function curve(points,k,n,context){
+ const {shape,importance,strength,dur}=context;
+ if(strength<=0||shape==='strike'||n.opening)return points;
+ const breath=/^(harmonica|flute|recorder|clarinet|oboe|bassoon|sax|reed|pipe|voice)$/.test(k),bow=/^(cello|violin|erhu|bow|solo|ens)$/.test(k),brass=/^(horn|trumpet|trombone|brass)$/.test(k);
+ if(!breath&&!bow&&!brass)return points;
+ let target;
+ if(k==='harmonica')target=shape==='swell'?[.20,.65,1.25,.48]:shape==='accent'?[1.24,.92,.96,.58]:shape==='taper'?[.88,1.02,.56,.12]:shape==='connected'?[.78,1.01,1.13,.75]:[.73,1.08,.91,.52];
+ else if(breath)target=shape==='swell'?[.34,.82,1.18,.62]:shape==='taper'?[.88,.99,.64,.18]:shape==='accent'?[1.12,1,.9,.62]:[.77,1.04,.95,.68];
+ else if(bow)target=shape==='swell'?[.30,.75,1.2,.77]:shape==='taper'?[.94,1.03,.71,.21]:shape==='accent'?[1.2,.90,1,.72]:[.8,1.08,1.02,.8];
+ else target=shape==='swell'?[.45,.85,1.16,.76]:shape==='accent'?[1.25,1.04,.94,.61]:shape==='taper'?[.91,.99,.7,.24]:[.86,1.06,.96,.68];
+ const mix=clamp(.38+.42*strength+.12*importance)*clamp(dur/.6);
+ return points.map((x,i)=>clamp(x+(target[i]-x)*mix,.08,1.45));
+}
+// Compare simultaneous performances, not just individual notes against a scale.
+// Close unresolved friction is different from an intentional melodic suspension.
+function ensemble(notes,role,L){
+ const hop=.125,N=Math.max(1,Math.ceil(L/hop)),bins=Array.from({length:N},()=>[]);let friction=0,pairs=0,contests=0,windows=0,answers=0,leadWindows=0;
+ for(const n of notes){if(n.r.fx||n.uni||n.sym||n.skip||n.v<.08)continue;for(let i=Math.max(0,Math.floor(n.t/hop));i<Math.min(N,Math.ceil((n.t+n.dur)/hop));i++){const at=(i+.5)*hop;if(at>=n.t-.02&&at<n.t+n.dur)bins[i].push(n)}}
+ for(const bin of bins){
+  const main=bin.filter(n=>n.r.name===role),secondary=bin.filter(n=>n.r.name!==role&&n.r.name!=='dbl'&&melodic(n));if(main.length){leadWindows++;const m=Math.max(...main.map(n=>n.v));if(secondary.some(n=>n.v>m*.85&&main.some(a=>Math.abs(a.m-n.m)<12)))contests++}else if(secondary.length)answers++;
+  if(bin.length<2)continue;windows++;
+  for(let i=0;i<bin.length;i++)for(let j=i+1;j<bin.length;j++){const a=bin[i],b=bin[j];if(a.r.name===b.r.name)continue;const d=Math.abs(a.m-b.m),w=a.v*b.v;pairs+=w;if(!a.intentional&&!b.intentional&&(d===1||d===13||(d<12&&Math.max(a.m,b.m)<48&&d<5)))friction+=w;}
+ }
+ return{harmony:clamp(1-4*friction/Math.max(.001,pairs)),collaboration:clamp(1-contests/Math.max(1,leadWindows)),responseShare:answers/N,windows,leadWindows};
+}
+root.PBCProducer={phrase,direct,shape,curve,arrange,support,inspect,ensemble};
 })(typeof window==='object'?window:globalThis);
