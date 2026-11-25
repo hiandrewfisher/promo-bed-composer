@@ -1,7 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="data:,">
-<title>Diagnostics | Production · Compact diagnostics v1.0</title>
+<title>Diagnostics | Production · Compact diagnostics v1.1</title>
 <style>
 :root{--bg:#f7f6f3;--fg:#1a1915;--mut:#6b675e;--line:#dcd8cf;--card:#fff;--acc:#2f5fd8;--bad:#b3261e}
 :root:not([data-theme="light"]){@media (prefers-color-scheme:dark){}}
@@ -26,7 +26,7 @@ tr.grow td{color:var(--bad);font-weight:600}
 .empty{color:var(--mut);padding:28px 0;text-align:center}
 code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
 </style></head><body><div class="wrap">
-<h1>Resource ledger</h1><div style="color:#1768d2;font-weight:600;margin:0 0 8px">Production · Compact diagnostics v1.0</div>
+<h1>Resource ledger</h1><div style="color:#1768d2;font-weight:600;margin:0 0 8px">Production · Compact diagnostics v1.1</div>
 <p class="sub">Sessions recorded by the bed composer, including ones that ended in a crash. Byte figures are estimates from each object's own shape, not measured native memory.</p>
 <div class="bar">
   <button id="reload">Reload</button>
@@ -34,41 +34,64 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
   <button id="csv">Export full CSV</button>
   <button id="clear">Clear history</button>
 </div>
-<div id="out"><div class="empty">Reading…</div></div>
+<div id="status" class="meta" role="status" aria-live="polite"></div>
+<div id="out"></div>
 </div>
 <script>
 const $=s=>document.querySelector(s);
-let DB=null,SESS=[],SNAPS={};
-function open(){return new Promise(r=>{const q=indexedDB.open('pbc-diag',1);
+let DB=null,SESS=[],SNAPS=Object.create(null),COUNTS=Object.create(null),busy=false;
+const TIMEOUT=8000,DISPLAY_LIMIT=25;
+const status=t=>{$('#status').textContent=t};
+function checkpoint(){try{return JSON.parse(localStorage.getItem('pbc.diag.last')||'null')}catch{return null}}
+function open(){if(DB)return Promise.resolve(DB);return new Promise((resolve,reject)=>{
+  let q,done=false;
+  const finish=(error,db)=>{if(done){if(db)db.close();return}done=true;clearTimeout(timer);if(error)reject(error);else{DB=db;db.onversionchange=()=>{db.close();if(DB===db)DB=null};resolve(db)}};
+  const timer=setTimeout(()=>finish(new Error('Database open timed out. Close other diagnostics/composer tabs and retry.')),TIMEOUT);
+  try{q=indexedDB.open('pbc-diag',1)}catch(e){finish(e);return}
   q.onupgradeneeded=e=>{const d=e.target.result;
     if(!d.objectStoreNames.contains('sessions'))d.createObjectStore('sessions',{keyPath:'sid'});
     if(!d.objectStoreNames.contains('snaps'))d.createObjectStore('snaps',{autoIncrement:true}).createIndex('sid','sid');
     if(!d.objectStoreNames.contains('events'))d.createObjectStore('events',{autoIncrement:true}).createIndex('sid','sid')};
-  q.onsuccess=e=>{DB=e.target.result;r()};q.onerror=()=>r()})}
-function all(store){return new Promise(r=>{if(!DB)return r([]);
-  try{const t=DB.transaction(store,'readonly').objectStore(store).getAll();
-    t.onsuccess=()=>r(t.result||[]);t.onerror=()=>r([])}catch(e){r([])}})}
-function mb(x){return x==null?'—':x.toFixed(1)}
+  q.onsuccess=()=>finish(null,q.result);q.onerror=()=>finish(q.error||new Error('Database open failed'));
+  q.onblocked=()=>finish(new Error('Database is blocked by another tab. Close it and retry.'));
+})}
+function read(store,setup,timeout=TIMEOUT,mode='readonly'){return new Promise((resolve,reject)=>{
+  let tx,done=false;
+  const finish=(e,v)=>{if(done)return;done=true;clearTimeout(timer);e?reject(e):resolve(v)};
+  const timer=setTimeout(()=>{finish(new Error(store+' read/write timed out'));try{tx.abort()}catch{}},timeout);
+  try{tx=DB.transaction(store,mode);let value;tx.oncomplete=()=>finish(null,value);tx.onerror=tx.onabort=()=>finish(tx.error||new Error(store+' transaction failed'));
+    setup(tx.objectStore(store),v=>{value=v});
+  }catch(e){finish(e)}
+})}
+const validSnap=s=>s&&typeof s==='object'&&Number.isFinite(s.t);
+function allSessions(){return read('sessions',(os,set)=>{const q=os.getAll();q.onsuccess=()=>set((q.result||[]).filter(s=>s&&typeof s.sid==='string'&&Number.isFinite(s.started)))})}
+function summaries(sessions){return read('snaps',(os,set)=>{const idx=os.index('sid'),snaps=Object.create(null),counts=Object.create(null);set({snaps,counts});
+  for(const {sid} of sessions){const key=IDBKeyRange.only(sid),pair=[];snaps[sid]=pair;
+    const count=idx.count(key);count.onsuccess=()=>{counts[sid]=count.result};
+    for(const dir of ['next','prev']){const q=idx.openCursor(key,dir);q.onsuccess=()=>{const cur=q.result;if(!cur)return;const snap=cur.value?.s;if(!validSnap(snap)){cur.continue();return}pair.push(snap);pair.sort((a,b)=>a.t-b.t);if(pair.length===2&&pair[0].t===pair[1].t)pair.pop()}}
+  }
+})}
+function visit(store,index,key,fn,timeout=60000){return read(store,(os,set)=>{let n=0;const q=(index?os.index(index):os).openCursor(key);q.onsuccess=()=>{const cur=q.result;if(!cur){set(n);return}fn(cur.value);n++;cur.continue()}},timeout)}
+function mb(x){return Number.isFinite(x)?x.toFixed(1):'—'}
+function controls(on){busy=on;for(const id of ['reload','json','csv','clear'])$('#'+id).disabled=on}
 async function load(){
-  await open();
-  SESS=await all('sessions');
-  const sn=await all('snaps');
-  SNAPS={};for(const row of sn){(SNAPS[row.sid]=SNAPS[row.sid]||[]).push(row.s)}
-  for(const k in SNAPS)SNAPS[k].sort((a,b)=>a.t-b.t);
-  draw();
+  if(busy)return;controls(true);status('Loading session summaries…');
+  try{draw();await open();SESS=(await allSessions()).sort((a,b)=>b.started-a.started);const result=await summaries(SESS.slice(0,DISPLAY_LIMIT));SNAPS=result.snaps;COUNTS=result.counts;draw();status(SESS.length>DISPLAY_LIMIT?'Showing latest '+DISPLAY_LIMIT+' of '+SESS.length+' sessions. Full CSV includes all history.':SESS.length+' recorded session'+(SESS.length===1?'':'s')+'.')}
+  catch(e){console.error('[Diagnostics]',e);try{draw()}catch{}status('Could not read full history: '+(e.message||e)+'. Emergency checkpoint remains available.');if(!$('#out').children.length)$('#out').textContent='No readable diagnostic data.'}
+  finally{controls(false)}
 }
 function draw(){
   const out=$('#out');out.replaceChildren();
-  let last=null;try{last=JSON.parse(localStorage.getItem('pbc.diag.last')||'null')}catch(e){}
+  const last=checkpoint();
   if(!SESS.length&&!last){out.innerHTML='<div class="empty">No sessions recorded yet. Open the composer, generate a few beds, then come back.</div>';return}
   SESS.sort((a,b)=>b.started-a.started);
-  for(const s of SESS){
+  for(const s of SESS.slice(0,DISPLAY_LIMIT)){
     const snaps=SNAPS[s.sid]||[];
     const card=document.createElement('div');card.className='card';
     const first=snaps[0],lastS=snaps[snaps.length-1];
     const dur=lastS?(lastS.t/1000/60).toFixed(1):'0';
     card.innerHTML='<h2>'+(s.clean?'':'⚠ ')+s.sid+(s.clean?'':' — ended without closing')+'</h2>'+
-      '<div class="meta">'+new Date(s.started).toLocaleString()+' · '+dur+' min · '+snaps.length+' snapshots'+
+      '<div class="meta">'+new Date(s.started).toLocaleString()+' · '+dur+' min · '+(COUNTS[s.sid]??snaps.length)+' snapshots'+
       (lastS?' · last heap '+(lastS.heap?lastS.heap.u+'/'+lastS.heap.l+' MB':'?')+' · '+lastS.beds+' beds · '+lastS.dom+' DOM nodes · stage '+lastS.stage:'')+'</div>';
     if(first&&lastS){
       const keys=new Set([...Object.keys(first.res||{}),...Object.keys(lastS.res||{})]);
@@ -88,14 +111,14 @@ function draw(){
     c.innerHTML='<h2>Emergency checkpoint</h2><div class="meta">The last second written before the page stopped, session '+last.sid+', '+new Date(last.at).toLocaleString()+'</div><pre style="overflow:auto;font-size:12px">'+
       JSON.stringify(last.snap,null,1).replace(/</g,'&lt;')+'</pre>';out.append(c)}
 }
-function dl(name,text,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);
+function dl(name,text,type){const b=new Blob(Array.isArray(text)?text:[text],{type});const u=URL.createObjectURL(b);
   const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
 $('#reload').onclick=load;
-function compact(){
+function compact(data=SNAPS){
  const chosen=[...SESS].sort((a,b)=>b.started-a.started).slice(0,5),sessions=[];
- let checkpoint=null;try{checkpoint=JSON.parse(localStorage.getItem('pbc.diag.last')||'null')}catch{}
+ const emergency=checkpoint();
  for(const meta of chosen){
- const a=SNAPS[meta.sid]||[],first=a[0],last=a.at(-1),keep=new Set(),resources={},metrics={};
+ const a=data[meta.sid]||[],first=a[0],last=a.at(-1),keep=new Set(),resources={},metrics={};
  if(a.length){keep.add(0);keep.add(a.length-1);for(let i=Math.max(0,a.length-15);i<a.length;i++)keep.add(i);
  for(let i=0;i<Math.min(40,a.length);i++)keep.add(Math.round(i*(a.length-1)/Math.max(1,Math.min(40,a.length)-1)));
  const changes=[];for(let i=1;i<a.length;i++)if(a[i].stage!==a[i-1].stage)changes.push(i);
@@ -107,21 +130,34 @@ function compact(){
  const timeline=[...keep].sort((x,y)=>x-y).map(i=>{const s=a[i],r=s.res||{};return [s.t,s.stage,s.heap?.u??null,s.native?.totalMB??null,s.dom,s.beds,Object.entries(r).filter(([k])=>/AudioBuffer|createBuffer|^node:Buffer$/.test(k)).reduce((n,[,v])=>n+(v.mb||0),0),r.OfflineAudioContext?.out??0,Object.entries(r).filter(([k])=>k.startsWith('node:')).reduce((n,[,v])=>n+(v.out||0),0)]});
  sessions.push({meta,snapshotCount:a.length,first,last,metrics,resources,columns,timeline});
  }else sessions.push({meta,snapshotCount:0});
- }return {format:'pbc-compact-v1',exportedAt:new Date().toISOString(),totalSessions:SESS.length,omittedSessions:Math.max(0,SESS.length-chosen.length),checkpoint,sessions,notes:'Resource counts and bytes are estimates. Unclean exit does not prove a crash. Timeline sampled; extrema computed from every stored snapshot.'}
+ }return {format:'pbc-compact-v1',exportedAt:new Date().toISOString(),totalSessions:SESS.length,omittedSessions:Math.max(0,SESS.length-chosen.length),checkpoint:emergency,sessions,notes:'Resource counts and bytes are estimates. Unclean exit does not prove a crash. Timeline sampled; extrema computed from every stored snapshot.'}
 }
 async function compactEvents(report){
  if(!DB)return;
- await new Promise(resolve=>{const tx=DB.transaction('events','readonly'),idx=tx.objectStore('events').index('sid');
- for(const s of report.sessions){const counts={},recent=[],important=[];s.events={counts,recent,important};const req=idx.openCursor(IDBKeyRange.only(s.meta.sid));req.onsuccess=()=>{const cur=req.result;if(!cur)return;for(const e of cur.value.e||[]){const key=e.s+':'+e.k;counts[key]=(counts[key]||0)+1;const row=[e.n,e.t,e.s,e.k,e.b,e.id,e.stage];recent.push(row);if(recent.length>30)recent.shift();if(e.s==='|'||/error|crash|worker|offlineaudio/i.test(e.k)){important.push(row);if(important.length>60)important.shift()}}cur.continue()}}
- tx.oncomplete=tx.onerror=tx.onabort=()=>resolve()});
+ for(const s of report.sessions){const counts={},recent=[],important=[];s.events={counts,recent,important};
+  await visit('events','sid',IDBKeyRange.only(s.meta.sid),row=>{for(const e of Array.isArray(row?.e)?row.e:[]){if(!e)continue;const key=e.s+':'+e.k;counts[key]=(counts[key]||0)+1;const data=[e.n,e.t,e.s,e.k,e.b,e.id,e.stage];recent.push(data);if(recent.length>30)recent.shift();if(e.s==='|'||/error|crash|worker|offlineaudio/i.test(e.k)){important.push(data);if(important.length>60)important.shift()}}});
+ }
 }
-$('#json').onclick=async()=>{const btn=$('#json');btn.disabled=true;try{const report=compact();await compactEvents(report);dl('pbc-diagnostics-compact.json',JSON.stringify(report),'application/json')}finally{btn.disabled=false}};
-$('#csv').onclick=()=>{const lines=['session,t_ms,stage,heap_mb,dom,beds,resource,made,freed,collected,outstanding,est_mb'];
-  for(const sid in SNAPS)for(const s of SNAPS[sid])for(const k in (s.res||{})){const c=s.res[k];
-    lines.push([sid,s.t,s.stage,s.heap?s.heap.u:'',s.dom,s.beds,k,c.made,c.freed,c.gc,c.out,c.mb].join(','))}
-  dl('pbc-diagnostics.csv',lines.join('\n'),'text/csv')};
-$('#clear').onclick=()=>{if(!confirm('Delete all recorded diagnostic sessions?'))return;
-  try{indexedDB.deleteDatabase('pbc-diag');localStorage.removeItem('pbc.diag.last')}catch(e){}
-  SESS=[];SNAPS={};draw()};
+async function action(label,fn){if(busy)return;controls(true);status(label);try{await fn()}catch(e){console.error('[Diagnostics]',e);status('Operation failed: '+(e.message||e)+'. Retry using Reload.')}finally{controls(false)}}
+$('#json').onclick=()=>action('Preparing compact export…',async()=>{
+ const data=Object.create(null);let readError=null;
+ try{await open();for(const meta of SESS.slice(0,5)){const a=[];data[meta.sid]=a;await visit('snaps','sid',IDBKeyRange.only(meta.sid),row=>{if(validSnap(row?.s))a.push(row.s)});a.sort((x,y)=>x.t-y.t)}}
+ catch(e){readError=e.message||String(e)}
+ const report=compact(data);if(!readError)try{await compactEvents(report)}catch(e){readError=e.message||String(e)}
+ if(readError){report.partial=true;report.readError=readError}
+ dl('pbc-diagnostics-compact.json',JSON.stringify(report),'application/json');status(readError?'Exported available diagnostics and checkpoint; partial history: '+readError:'Compact diagnostics exported.');
+});
+$('#csv').onclick=()=>action('Preparing full history CSV…',async()=>{
+ await open();const chunks=[],lines=['session,t_ms,stage,heap_mb,dom,beds,resource,made,freed,collected,outstanding,est_mb'];
+ const flush=()=>{if(lines.length){chunks.push(lines.join('\n')+'\n');lines.length=0}};
+ const csv=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+ await visit('snaps',null,null,row=>{const s=row?.s;if(!validSnap(s))return;for(const [k,c] of Object.entries(s.res||{})){if(!c)continue;lines.push([row.sid,s.t,s.stage,s.heap?.u,s.dom,s.beds,k,c.made,c.freed,c.gc,c.out,c.mb].map(csv).join(','));if(lines.length>=1024)flush()}},120000);flush();
+ dl('pbc-diagnostics.csv',chunks,'text/csv');status('Full CSV exported.');
+});
+$('#clear').onclick=()=>{if(busy||!confirm('Delete all recorded diagnostic sessions?'))return;action('Clearing diagnostic history…',async()=>{
+ await open();await new Promise((resolve,reject)=>{let tx,done=false;const finish=e=>{if(done)return;done=true;clearTimeout(timer);e?reject(e):resolve()};const timer=setTimeout(()=>{finish(new Error('Clear timed out'));try{tx.abort()}catch{}},TIMEOUT);try{tx=DB.transaction(['sessions','snaps','events'],'readwrite');tx.oncomplete=()=>finish();tx.onerror=tx.onabort=()=>finish(tx.error||new Error('Clear failed'));for(const k of ['sessions','snaps','events'])tx.objectStore(k).clear()}catch(e){finish(e)}});
+ try{localStorage.removeItem('pbc.diag.last')}catch{}SESS=[];SNAPS=Object.create(null);COUNTS=Object.create(null);draw();status('History cleared. An open composer tab may continue recording.');
+})};
+
 load();
 </script></body></html>
