@@ -7,6 +7,25 @@ for(let i=0;i<n;i++){const t=i/sr,p=[65,69,72,67,65,70,74,69][Math.floor(t*2)%8]
  await page.evaluate(()=>window.PBC_SECONDARY=false);
  await page.locator('#voice').setInputFiles({name:'voice-fixture.wav',mimeType:'audio/wav',buffer:wav(15,true)});
  await page.waitForFunction(()=>document.getElementById('status').textContent.includes('press Generate'),{},{timeout:60000});
+ // Direct folder mode must not invoke the generator or decode the whole library.
+ await page.locator('#mineMode').selectOption('mix');
+ await page.evaluate(()=>{window.PBC.render=()=>{throw Error('Generator invoked in direct mode')};window.PBCPrepareLibrary=()=>{throw Error('Transcription invoked in direct mode')}});
+ await page.evaluate(({audio})=>{const bytes=Uint8Array.from(audio);const dt=new DataTransfer();for(let i=0;i<3;i++)dt.items.add(new File([bytes],'track-'+i+'.wav',{type:'audio/wav'}));const f=document.getElementById('mixFiles');f.files=dt.files;f.dispatchEvent(new Event('change'))},{audio:[...wav(2)]});
+ await page.locator('#compose').click();await page.waitForFunction(()=>document.getElementById('summary').textContent==='3 beds');
+ assert.equal(await page.locator('.whyBox:visible').count(),0);assert.equal(await page.locator('.remixBtn').count(),0);
+ await page.locator('.track').first().locator('.star').nth(1).click();assert.equal(await page.locator('.whyBox:visible').count(),1);
+ await page.locator('.track').first().locator('.star').nth(1).click();assert.equal(await page.locator('.whyBox:visible').count(),0);
+ await page.locator('#clearSelection').click();assert.equal(await page.locator('#selection').isVisible(),false);
+ await page.locator('#voicePreview').click();await page.waitForFunction(()=>document.getElementById('voicePreview').textContent==='■');
+ await page.locator('#voicePreview').click();
+ await page.locator('#skipMode').click();const rect=await page.locator('#voiceWave').boundingBox();await page.mouse.move(rect.x+rect.width*.2,rect.y+rect.height*.6);await page.mouse.down();await page.mouse.move(rect.x+rect.width*.4,rect.y+rect.height*.6,{steps:5});await page.mouse.up();assert.equal(await page.locator('.skipRegion').count(),1);
+ await page.locator('.skipDelete').click();assert.equal(await page.locator('.skipRegion').count(),0);
+ assert.equal(await page.locator('.ck').count(),0);assert.deepEqual(errors,[]);
+ console.log('Browser: direct folder mode, rating gating, voice audition, editable skips and flat controls');
+ await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>!!document.getElementById('mineFiles'));
+ await page.evaluate(()=>window.PBC_SECONDARY=false);
+ await page.locator('#voice').setInputFiles({name:'voice-fixture.wav',mimeType:'audio/wav',buffer:wav(15,true)});
+ await page.waitForFunction(()=>document.getElementById('status').textContent.includes('press Generate'),{},{timeout:60000});
  await page.locator('#mineMode').selectOption('audio');assert(await page.locator('.sourceUpload').isVisible());
  await page.locator('#mineFiles').setInputFiles({name:'music-fixture.wav',mimeType:'audio/wav',buffer:wav(16)});
  assert.equal(await page.locator('#mineMode').inputValue(),'audio');assert.equal(await page.locator('#mineCount').textContent(),'(0)');
