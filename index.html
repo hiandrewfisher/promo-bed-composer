@@ -51,7 +51,7 @@
 #mineBox .mineStem .sub{display:block;font-size:12px;opacity:.65;margin:2px 0 0}
 #mineBox .mineWarn{color:#c2410c}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) #mineBox .mineWarn{color:#fdba74}}
-</style><div class="top"><div><h1>Promo Bed Composer <span class="ver" title="build 2026-11-24 22:41 UTC">v141</span></h1><p class="sub">Edit one voice segment. Every music bed is composed around it from sampled instruments.</p></div><span id="status" class="status">Ready</span></div>
+</style><div class="top"><div><h1>Promo Bed Composer <span class="ver" title="build 2026-11-24 22:41 UTC">v142</span></h1><p class="sub">Edit one voice segment. Every music bed is composed around it from sampled instruments.</p></div><span id="status" class="status">Ready</span></div>
 <main class="workspace"><aside class="controls"><div class="panel"><div class="uploads"><label class="drop" id="voiceDrop"><span class="glyph">◉</span><b id="voiceTitle">Add voice recording</b><span class="sub" id="voiceSub">Drop or choose audio</span><input id="voice" type="file" accept="audio/*"></label><div class="drop" id="musicDrop"><span class="glyph">♫</span><b id="musicTitle">Composed music beds</b><span class="sub" id="musicSub">190 real recorded instruments incl. 68 hardware synths (Juno-6, Jupiter-4, JD-800, JX-3P, SH-2, Xpander, Chroma Polaris, Analog Four…), 14 kits incl. TR-909, TR-707, DMX, SP-12, Linn 9000, CR-78, TR-606 · 27 genres · 5,705 public-domain pieces</span></div></div><div class="ghead"><b>Genre mix</b><span class="mini">blended into every bed</span><button id="gEven" class="pill">Even</button><button id="gClear" class="pill">Clear</button></div><div id="genreMix" class="gmix"></div><div class="srcrow"><label for="srcMix" class="gname" title="Controls how closely the new arrangement follows the source score.">Source</label><span class="mini">Loose inspiration</span><input type="range" id="srcMix" min="0" max="100" step="5" value="60" aria-label="How closely the arrangement follows the source score"><span class="mini">Close to source</span><b id="srcVal" class="gpct">60%</b></div><div class="toolbar" style="margin-top:10px"><button id="compose" class="primary">Generate 8 beds</button><button id="cancelQ" class="pill" title="Stop composing the beds still waiting in line (the one being made right now finishes)">Cancel queue</button><button id="ratings" class="pill" title="Save a JSON of every detail of each bed you liked or disliked, to send back so the composer can learn which of its choices work">Export likes &amp; dislikes (JSON)</button><span class="mini">from the selected read and bed length</span><span id="summary" class="status push">0 beds</span></div><div class="meter" style="margin-top:9px"><div class="bar"><div id="genBar"></div></div><span id="genText" class="mini">Idle</span></div><p class="mini credits">Synths: Public Samples hardware multisamples (public-domain dedication). Drum machines: Synth Abuse collection via smpldsnds Drum Abuse packs. FX: Sonic Pi samples (CC0) and Public Samples Drones. Real recordings: Salamander Grand (A. Holm, CC BY 3.0); VSCO 2 CE and VCSL incl. Steinway, Kawai, uprights, TX81Z synth, percussion (Versilian Studios, CC0); Ivy Audio upright via VSCO; Greg Sullivan Wurlitzer, CP-80, Pianet T (CC BY 3.0); D. Smolken basses (CC0); Karoryfer electric guitar, quartertone nylon and U. Iowa steel guitar via tonejs-instruments; TR-808 set by Michael Fischer; Sonic Pi drums, tabla and vinyl (CC0); Perfect Drums (WTFPL); Karoryfer Samples guitars, basses, saxes, tuba, erhu, cithara, cello (Bigcat), Osiris piano, Hungarian zither, guitar banjo, bass tagelharpa (CC0); jlearman steel drum (Unlicense); MTG solo saxophones (Universitat Pompeu Fabra, CC BY 4.0). Source library: public-domain scores: OpenScore Lieder art songs (CC0), J. S. Bach chorales and other classical scores, and traditional tunes from O&#39;Neill&#39;s Music of Ireland (1903), Ryan&#39;s Mammoth Collection (1883), Aird&#39;s Selection of Airs (1782) and American and Northumbrian fife and pipe books, as encoded in the music21 corpus; melody-only tunes harmonized automatically; plus traditional tunes from The Session (thesession.org), downloaded and converted by the app itself. Music theory: Tonal (MIT) in the browser, music21 (BSD) for score analysis.</p></div>
 <div class="panel" id="voicePanel"><div class="sectiontitle"><h2>Voice segment</h2><span id="segmentText" class="chip">Upload voice to begin</span></div><div id="voiceWave" class="timeline" title="Drag edges to trim; drag center to move; scroll to zoom around cursor"><canvas id="voiceCanvas"></canvas><div id="selection" class="selection hidden"><div class="center" title="Drag to move the selected segment"></div><div class="edge left" title="Drag to adjust the beginning"></div><div class="edge right" title="Drag to adjust the end"></div></div></div><div class="between" style="margin-top:12px"><div class="pills" id="durations"><span class="mini" style="align-self:center">Music length</span><button class="pill" data-duration="20">20s</button><button class="pill selected" data-duration="25">25s</button><button class="pill" data-duration="30">30s</button><button class="pill" data-duration="60">60s</button></div><button id="detect" class="pill hidden" hidden></button></div><div class="toolbar" style="margin-top:10px"><button id="skipMode" class="pill">＋ Mark skip</button><button id="clearSkips" class="pill">Clear skips</button><span id="skipInfo" class="mini">No skipped sections</span></div><div id="note">Drag to select. Drag the edges to trim, the middle to move, or scroll to zoom. Mark skips to remove unwanted words.</div><div class="settings" style="margin-top:10px"><label class="mini fnLabel" for="fileName">File name</label><input id="fileName" value="Promo bed" aria-label="File name"><span id="filenamePreview" class="mini"></span><span class="hidden"><input id="promoName"><input id="voicer"><input id="campaign"></span></div></div>
 <div class="panel"><div class="sectiontitle"><div><h2>Music ramps</h2><p class="sub">One blue envelope: duck down, recover, then fade to silence. Drag its three handles.</p></div><span id="rampLabel" class="chip">Attack 0.18s · Release 0.45s</span></div><div class="globalramp" id="rampGraph"><svg viewBox="0 0 1000 160" preserveAspectRatio="none"><path id="rampPath" fill="none" stroke="#1768d2" stroke-width="4"/><path d="M0 80 H1000" stroke="#cad7e4" stroke-width="1" stroke-dasharray="6 5"/></svg><span class="ramptitle" style="top:4px">DUCKING → END FADE</span><div class="rampdot" id="attackDot" title="Ducking ramp down"></div><div class="rampdot" id="releaseDot" title="Ducking recovery"></div><div class="rampdot curve" id="downCurve" title="Drag up or down to curve the duck-down ramp"></div><div class="rampdot curve" id="upCurve" title="Drag up or down to curve the recovery ramp"></div><div class="rampdot curve" id="fadeCurve" title="Drag up or down to curve the end fade"></div><div class="rampdot" id="endFadeDot" title="Drag left/right for ending fade length, up/down for fade shape"></div></div><div class="gapControls" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:12px 0"><label class="mini" style="display:grid;gap:5px">Music rebound between words <strong id="gapLiftValue">0%</strong><input id="gapLift" type="range" min="0" max="100" step="5" value="0" aria-label="Music rebound between words"></label><label class="mini" style="display:grid;gap:5px">Wait before rebound <strong id="gapHoldValue">0.45s</strong><input id="gapHold" type="range" min="0" max="2" step="0.05" value="0.45" aria-label="Wait before music rebounds"></label></div><div class="between"><span class="mini" id="endFadeLabel"></span><span class="mini" style="display:none">Blue end handle: horizontal = fade length; vertical = fade curve</span></div><p class="mini">Each row has separate blue handles for loudest and quietest music levels. Drag the orange voice clip to position it within each bed. Trim the voice once in the Voice segment selector above; press Generate to write new beds for it.</p></div></aside><section class="audios"><div class="panel"><div class="sectiontitle"><div><h2>Music beds <span id="total" class="badge">0</span></h2><p class="sub">Select a bed to play. Drag the blue handles to adjust its levels. Drag the orange clip to move the voice.</p></div><button id="export" class="primary">↓ Export ♥</button></div><div class="toolbar" style="margin-bottom:10px"><button class="pill selected" id="all">All mixes</button><button class="pill" id="favorites">♥ Favorites</button><button class="pill" id="next">▶ Next mix</button><span class="status push" id="progress"></span></div><div class="listShell"><div id="abovePlaying" class="playingDirection above" role="button" tabindex="0" title="Jump to playing track"><span>↑ Playing track</span></div><div id="list"><div class="empty">Select the part of the read to use, pick a bed length, then press Generate. New beds are always added at the bottom.</div></div><div id="belowPlaying" class="playingDirection below" role="button" tabindex="0" title="Jump to playing track"><span>↓ Playing track</span></div></div></div></section></main>
@@ -3277,7 +3277,7 @@ select{padding-right:36px;cursor:pointer;
 })();
 </script>
 
-<script>window.PBC_VERSION="v141";window.PBC_BUILT="2026-11-25 03:45 UTC";try{console.log("[PromoMixer] build "+window.PBC_VERSION+" ("+window.PBC_BUILT+")")}catch(e){}</script>
+<script>window.PBC_VERSION="v142";window.PBC_BUILT="2026-11-25 03:45 UTC";try{console.log("[PromoMixer] build "+window.PBC_VERSION+" ("+window.PBC_BUILT+")")}catch(e){}</script>
 <script>
 /* ---------- your own music as source material ---------- */
 (function(){
@@ -3327,7 +3327,7 @@ select{padding-right:36px;cursor:pointer;
 .controls .sectiontitle{margin:0 0 12px;gap:8px;flex-wrap:wrap}
 .controls .sectiontitle h2{font-size:18px}
 .controls .sectiontitle .sub{margin-top:4px}
-.controls .drop{min-height:64px;margin-bottom:12px;padding:12px;border-radius:10px}
+.controls .drop{min-height:80px;margin-bottom:12px;padding:12px;border-radius:10px}
 .controls .drop .glyph{display:none}
 .controls .timeline{height:96px}
 .controls .toolbar,.controls .pills,.controls .between,.controls .settings{gap:8px!important;align-items:center!important}
@@ -3336,9 +3336,9 @@ select{padding-right:36px;cursor:pointer;
 #mineBox{margin:0 0 16px;padding:0}
 .fieldLabel{display:block;font-size:13px;font-weight:700;margin-bottom:8px}
 #mineBox .mineBody,#mineBox .mineRow{display:grid;gap:8px;padding:0;min-width:0}
-#mineMode{width:100%;min-height:40px;font-size:14px}
+#mineMode{width:100%;min-height:56px;font-size:14px}
 #mineBox .sourceFile{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-#mineBox .minePick{opacity:1;border:1px solid #cfd9e6;border-radius:8px;padding:8px 12px;min-height:36px;font-size:13px}
+#mineBox .minePick{opacity:1;border:1px solid #cfd9e6;border-radius:8px;padding:8px 12px;min-height:56px;font-size:14px}
 #mineBox[data-mode=midi] :is(.sourceFile,#mineProg,#mineHealth,#mineRule){display:none}
 #mineBox :is(#mineProg,#mineHealth,#mineRule):empty{display:none}
 #mineBox .sub{margin:0;overflow-wrap:anywhere;font-size:12px}
@@ -3362,12 +3362,22 @@ select{padding-right:36px;cursor:pointer;
 .generateActions #summary{grid-column:1/-1;margin:0;text-align:left}
 .controls .meter{margin-top:8px!important}
 .controls .creditsBox{padding:0 8px}
-.controls .ck,.audios .ck{--fy:-3px;--push:3px}
-.controls .ck-back,.audios .ck-back{transform:translateY(4px)}
-.controls .ck-cap,.audios .ck-cap{text-transform:none;letter-spacing:0;font-weight:700;padding-inline:10px}
-.controls .ck-t,.audios .ck-t{--h:36px;--fs:.8rem}
-.controls .ck-p,.audios .ck-p{--h:44px;--fs:.85rem}
-.controls .ck-sm,.audios .ck-sm{--h:32px}
+.controls .ck-cap,.audios .ck-cap{text-transform:none;letter-spacing:0;font-weight:700;padding-inline:14px}
+.ck.ck-t,.ck.ck-sm{--h:56px;--fs:.85rem}
+.ck.ck-p{--h:64px;--fs:.95rem}
+.ck.ck-q{--h:56px;--w:56px}
+.ck .ck-cap{padding-block:8px;line-height:1.25}
+.ck.ck-q .ck-cap{padding-inline:0}
+select,input:not([type]),input[type=text],input[type=number],input[type=search]{min-height:52px;padding:12px 14px;font-size:14px}
+select.remix,.randcount,.fxFields select{min-height:52px;padding:12px;font-size:14px}
+button:not(.ck):not(.rampdot):not(.trackname):not(.remixOpt):not(.star):not([class*="bedx"]){min-height:52px}
+.genreBox>summary{min-height:56px;align-items:center}
+.controls .toolbar,.controls .pills,.controls .between,.audios .toolbar,.footer,.editorActions{row-gap:16px!important}
+#durations{row-gap:16px!important}
+#mineBox .sourceFile{row-gap:16px}
+#mineBox label.minePick{display:inline-flex;align-items:center;min-height:56px;padding:12px 16px}
+#mineBox .minePick.ck{min-height:var(--h);padding:0}
+@media(max-width:400px){#durations{grid-template-columns:repeat(2,minmax(0,1fr))}.generateActions{grid-template-columns:1fr}}
 .exportSettings{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px!important;margin:0 0 12px!important;align-items:center!important}
 .exportSettings input{width:100%;min-width:0}
 .exportSettings #filenamePreview{grid-column:2;overflow-wrap:anywhere}
