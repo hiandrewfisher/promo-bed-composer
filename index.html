@@ -1049,7 +1049,7 @@ async function pickAny(seed,avoid,faith,gk){
   {try{const F0=faith??.7,fresh=F0<MINE_KNEE;
    const pc=fresh?(await UL.compose(R0))||await UL.pick(R0)
      :((F0>=.5&&UL.pickPlayable?await UL.pickPlayable(R0):null)||await UL.pick(R0));
-   if(pc&&pc.mel&&pc.mel.length>3&&pc.chords&&pc.chords.length){pc._i='u:'+(pc.k||'blend');
+   if(pc&&(F0>=.985&&pc.audio||pc.mel&&pc.mel.length>3&&pc.chords&&pc.chords.length)){pc._i='u:'+(pc.k||'blend');
     if(pc.blended)pc.noAudio=1;
     console.log('[PromoMixer] source: your library —',pc.title,'·',pc.bpm+' bpm ·',pc.mode);return pc}
   }catch(e){console.warn('[PromoMixer] library pick failed',e)}}}
@@ -2076,6 +2076,16 @@ async function render(o,onStep){DC=o.ctx;if(o.source&&o.source!='original'&&!o.p
     console.log('[PromoMixer] your recording '+(o.mineOnly?'as written, raw':
       'at '+Math.round(mg*100)+'% against the arrangement at '+Math.round(o.compGain*100)+'%')+' — '+o.piece.title)}
   }catch(e){console.warn('[PromoMixer] could not use your recording',e)}}}
+// At the original-recording endpoint, never enter the synthesis or mastering graph.
+if((o.faith??.7)>=.985&&window.PBC_MINE_N>0){
+ if(!o.mineBuf)throw new Error('Original recording unavailable; reselect the source file. No arrangement substituted.');
+ const b=o.mineBuf,L=o.L,sr=b.sampleRate,n=Math.max(1,Math.round(L*sr)),out=DC.createBuffer(2,n,sr);
+ for(let ch=0;ch<2;ch++){const src=b.getChannelData(Math.min(ch,b.numberOfChannels-1)),dst=out.getChannelData(ch);dst.set(src.subarray(0,n))}
+ const p=o.piece, key=p.key||0, mode=p.mode||'maj', bpm=p.bpm||120;
+ const meta={title:p.title,source:p.title,style:'Original recording',faith:100,key:['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'][key%12]+' '+mode,bpm,chords:'Original recording',lineup:['Original recording'],offset:0,button:L,pieceId:p._i||p.k,chan:{},detail:null,song:{key,mode,bpm,sw:0}};
+ console.log('[PromoMixer] original PCM only',p.title,n,sr);
+ return {buffer:out,offset:0,meta,piece:p};
+}
 const c=compose(o);if(o.song&&o.song.pump!=null)c.S={...c.S,pump:o.song.pump};if(o.mineOnly){for(const n of c.notes)n.skip=1;for(const h of c.hits)h.skip=1}
 if(o.ch){for(const n of c.notes){const x=o.ch[n.r.name]||o.ch[n.r.name.replace(/2$/,'')];if(x&&x.mute)n.skip=1}if(o.ch.drums&&o.ch.drums.mute)for(const h of c.hits)h.skip=1}if(o.solo){const k=o.solo;for(const n of c.notes)if(n.r.name!==k&&n.r.name.replace(/2$/,'')!==k)n.skip=1;for(const h of c.hits)if(k!=='drums')h.skip=1}if(globalThis.PBC_SOLO){const k=globalThis.PBC_SOLO;for(const n of c.notes)if(!k.includes(n.r.name))n.skip=1;for(const h of c.hits)if(!k.includes(GROUP[h.n]||'perc'))h.skip=1}const S=c.S,A=o.A||{},L=o.L,sr=44100,H=tools(rng(o.seed^0x51ed)),M2=merge(MASTER,S.master),FX=S.fx||{};{const g=o.song||{};if(g.width!=null)M2.side=g.width;if(g.warmth!=null)M2.sat=g.warmth;if(g.loud!=null)M2.loud=g.loud;if(g.air!=null)M2.air=g.air;if(g.glue!=null)M2.glue=[-8-20*g.glue,1+2.5*g.glue];M2.ueq=[['lowshelf',110,g.low||0],['peaking',450,g.lowmid||0],['peaking',1500,g.mid||0],['peaking',4000,g.presence||0],['highshelf',9000,g.high||0],['middip',clamp(((o.A&&o.A.f0)||150)*18,1100,3800),-(g.midDip??2)]];M2.monoHz=g.monoHz??130;M2.subHz=g.subHz??30;M2.endCap=g.endCap??0;M2.vW=g.vWeight??.65;M2.pocket=g.pocket??1;M2.drift=g.drift??2.6;M2.rr=g.rr??1}
  // load: each note's sample set (soft or hard layer), and the genre's kits
