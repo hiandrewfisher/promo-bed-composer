@@ -1,4 +1,4 @@
-<script src="diagnostics.js"></script>
+<script src="diagnostics.js?v=2"></script>
 <script src="userlib.js"></script>
 <script src="stems.js"></script>
 <title>Promo Bed Composer</title><meta charset="utf-8"><style>
@@ -2059,7 +2059,7 @@ async function render(o,onStep){DC=o.ctx;if(o.source&&o.source!='original'&&!o.p
   try{let b=MINEBUF.get(o.piece.audio);
    if(!b){onStep&&onStep('Reading your recording');const fl=await UL.audio(o.piece);
     if(fl){const full=await DC.decodeAudioData(await fl.arrayBuffer());
-     const sr=full.sampleRate,keep=Math.min(full.length,Math.ceil((L+9)*sr));
+     const sr=full.sampleRate,keep=Math.min(full.length,Math.ceil((o.L+9)*sr));
      if(keep<full.length-sr){                       // worth the copy
       b=DC.createBuffer(full.numberOfChannels,keep,sr);
       for(let ch=0;ch<full.numberOfChannels;ch++)
@@ -2292,7 +2292,7 @@ const strip=(name,spec,toward)=>{const k=name;if(strips[k])return strips[k];cons
   console.log('[PromoMixer] recording in at '+Math.round(g0*100)+'%, from '+head.toFixed(1)+'s of '+b.duration.toFixed(1)+'s');}
  {let hitsDone=0;try{hitsDone=mixHits(c.hits)}catch(e){console.error('[PromoMixer] drum mix',e)}
   const Qn=[...c.notes.map(n=>[n.t,0,n]),...(hitsDone?[]:c.hits.map(h=>[h.t,1,h]))].sort((a,b)=>a[0]-b[0]);let qi=0;
-  const sched=u=>{while(qi<Qn.length&&Qn[qi][0]<u){const[,k,x]=Qn[qi++];k?playH(x):playN(x)}};sched(1.1);
+  const sched=async u=>{let start=performance.now();while(qi<Qn.length&&Qn[qi][0]<u){const[,k,x]=Qn[qi++];k?playH(x):playN(x);if(performance.now()-start>8){await yieldTask();start=performance.now()}}};await sched(1.1);
   let flushed=false,flushDone=false,onHide=null,wd=null;
   const wake=()=>{if(!STARTED)return;try{const p=C.resume();if(p&&p.catch)p.catch(()=>{})}catch(e){}};
   // the flush is sliced into 10 ms pieces with a yield between them, so it can never
@@ -2317,7 +2317,7 @@ const strip=(name,spec,toward)=>{const k=name;if(strips[k])return strips[k];cons
    onHide=()=>{if(document.hidden)flushAll('panel hidden mid-render')};
    try{document.addEventListener('visibilitychange',onHide);PBCSTAT.visAdd++}catch(e){}
    for(let w=1;w<L-.2;w++){const at=Math.round((w-.05)*SR/128)*128/SR;
-    C.suspend(at).then(()=>{if(flushed){if(flushDone)wake();return}sched(w+1.1);wake()},()=>{flushAll('suspend rejected')})}
+    C.suspend(at).then(async()=>{if(flushed){if(flushDone)wake();return}await sched(w+1.1);if(!flushed||flushDone)wake()}).catch(()=>{flushAll('suspend rejected')})}
    wd=setTimeout(()=>flushAll('render stalled'),Math.max(20000,L*1600));PBCSTAT.watchSet++;
   }
   CLEANUP.push(()=>{if(onHide){try{document.removeEventListener('visibilitychange',onHide);PBCSTAT.visRemove++}catch(e){}onHide=null}if(wd){clearTimeout(wd);PBCSTAT.watchCleared++;wd=null}});
@@ -3320,7 +3320,7 @@ select{padding-right:36px;cursor:pointer;
   armed=0;$$('mineClear').textContent='Clear';
   await UL.clear();await count();prog('Library cleared')};
  ['dragover','drop'].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();
-  if(ev==='drop'&&e.dataTransfer&&e.dataTransfer.files)take(e.dataTransfer.files)}));
+  if(ev==='drop'&&e.dataTransfer&&e.dataTransfer.files&&e.target.closest('.mineBody'))take(e.dataTransfer.files)}));
  count();
  if(window.STEMS)STEMS.available().then(ok=>{window.PBC_STEMS=!!ok;
    if(ok)$$('mineStemRow').classList.remove('hidden')}).catch(()=>{});
