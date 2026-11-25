@@ -1,0 +1,49 @@
+name: Browser diagnostics
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - diagnostics.js
+      - index.html
+      - .github/workflows/browser-diagnostics.yml
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --check diagnostics.js
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: |
+          python3 -m http.server 8765 > /tmp/pbc-server.log 2>&1 &
+          mkdir -p reports
+          node <<'JS'
+          const {chromium}=require('playwright');
+          const fs=require('fs'), cp=require('child_process');
+          const record=(kind,data)=>fs.appendFileSync('reports/events.jsonl',JSON.stringify({at:Date.now(),kind,data})+'\n');
+          (async()=>{
+            const browser=await chromium.launch();
+            const page=await browser.newPage();
+            page.on('crash',()=>record('crash',{}));
+            page.on('pageerror',e=>record('error',e.message));
+            const cdp=await page.context().newCDPSession(page);
+            await cdp.send('Performance.enable');
+            const sample=async()=>{record('rss',cp.execSync('ps -eo pid,ppid,rss,comm | grep -E "chrome|chromium" || true').toString());try{record('metrics',await cdp.send('Performance.getMetrics'));record('dom',await cdp.send('Memory.getDOMCounters'))}catch(e){record('cdp-error',e.message)}};
+            const timer=setInterval(()=>sample().catch(e=>record('sample-error',e.message)),1000);
+            try{
+              await page.goto('http://localhost:8765/',{waitUntil:'domcontentloaded'});
+              await page.waitForFunction(()=>!!window.__PBCDIAG?.breadcrumbs);
+              await page.evaluate(async()=>{const c=new OfflineAudioContext(2,44100*25,44100);const o=c.createOscillator();o.connect(c.destination);o.start();await c.startRendering()});
+              await sample();
+              record('breadcrumbs',await page.evaluate(()=>window.__PBCDIAG.breadcrumbs()));
+              const response=await page.request.get('https://hiandrewfisher.github.io/promo-bed-composer/diagnostics.js?check='+Date.now());
+              record('deployment',{status:response.status(),version2:(await response.text()).includes("diagnostics.version")});
+            }finally{clearInterval(timer);await browser.close()}
+          })().catch(e=>{record('fatal',e.message);process.exitCode=1});
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-diagnostics
+          path: reports/
