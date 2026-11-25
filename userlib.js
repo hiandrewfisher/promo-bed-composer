@@ -267,6 +267,50 @@ const UL={
   log('ingest complete',{ok,skip,fail});
   return {ok,skip,fail,total:list.length};
  },
+ /* A new composition built out of the whole library rather than one track:
+    the chords and melody of each eight-bar span are lifted from a different
+    piece and transposed into one key, so what comes out is in none of the
+    files but is made of all of them. Deterministic for a given seed. */
+ async compose(r){
+  const all=await UL.all();
+  if(!all.length)return null;
+  const usable=all.filter(p=>p&&p.chords&&p.chords.length&&p.mel&&p.mel.length>3);
+  if(!usable.length)return null;
+  const pick=()=>usable[Math.floor(r()*usable.length)%usable.length];
+  const base=pick();
+  if(usable.length<2)return base;
+  const key=base.key||0,bar=base.bar||4,len=Math.max(bar*8,base.len||bar*8);
+  const SEC=bar*8,chords=[],mel=[],used=new Set();
+  const near=t=>t>6?t-12:t;                       // transpose by the short way
+  let modeVote=0;
+  for(let b=0;b<len;b+=SEC){
+   const src=pick();used.add(src.title);
+   if(src.mode==='min')modeVote--;else modeVote++;
+   const tr=(((key-(src.key||0))%12)+12)%12, mt=near(tr);
+   const span=Math.min(SEC,len-b);
+   const room=Math.max(1,(src.len||span)-span);
+   const off=Math.floor(r()*room/bar)*bar;         // land on a bar line
+   for(const c of src.chords){const t=c[0]-off;
+    if(t<0||t>=span)continue;
+    chords.push([b+t,c[1],(((c[2]+tr)%12)+12)%12,(((c[3]+tr)%12)+12)%12,c[4]])}
+   for(const m of src.mel){const t=m[0]-off;
+    if(t<0||t>=span)continue;
+    let v=m[2]+mt;while(v<48)v+=12;while(v>84)v-=12;
+    mel.push([b+t,m[1],v])}
+  }
+  if(!chords.length||mel.length<4)return base;
+  chords.sort((a,b)=>a[0]-b[0]);mel.sort((a,b)=>a[0]-b[0]);
+  const phr=[];for(let i=8;i*bar<=len;i+=8)phr.push(i*bar);
+  if(!phr.length)phr.push(len);
+  const bpms=usable.map(p=>p.bpm||112).sort((a,b)=>a-b);
+  const bpm=bpms[Math.floor(bpms.length/2)];
+  const arc=[0,0,0,0];
+  for(const p of usable)for(let i=0;i<4;i++)arc[i]+=(p.arc&&p.arc[i])||0;
+  const am=Math.max(...arc)||1;
+  return {title:'New from your library ('+used.size+' of '+usable.length+')',
+   composer:'Your library',mode:modeVote<0?'min':'maj',bar,len,mel,chords,phr,
+   key,bpm:+bpm.toFixed(1),arc:arc.map(v=>+(v/am).toFixed(3)),mine:1,blended:used.size};
+ },
  count(){return tx('readonly',s=>s.count())},
  keys(){return tx('readonly',s=>s.getAllKeys())},
  all(){return tx('readonly',s=>s.getAll())},
