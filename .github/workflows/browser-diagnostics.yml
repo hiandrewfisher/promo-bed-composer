@@ -21,6 +21,7 @@ jobs:
       - run: node quality-test.cjs
       - run: node tests/verify-musicians.cjs
       - run: node tests/verify-ensemble-pocket.cjs
+      - run: node tests/verify-vocabulary.cjs
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
       - run: |
