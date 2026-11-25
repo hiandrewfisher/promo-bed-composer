@@ -86,17 +86,16 @@
    URL.revokeObjectURL=function(u){ freed('ObjectURL'); return ru.apply(URL,arguments) }; }catch(e){}
 
  /* timers, frames, listeners */
- var st=window.setTimeout, ct=window.clearTimeout, si=window.setInterval, ci=window.clearInterval;
- window.setTimeout=function(){ made('timer'); var a=[].slice.call(arguments);
-   if(typeof a[0]==='function'){ var f=a[0]; a[0]=function(){ freed('timer'); return f.apply(this,arguments) } }
-   return st.apply(window,a) };
- window.clearTimeout=function(id){ freed('timer'); return ct.call(window,id) };
- window.setInterval=function(){ made('interval'); return si.apply(window,arguments) };
- window.clearInterval=function(id){ freed('interval'); return ci.call(window,id) };
- var raf=window.requestAnimationFrame, caf=window.cancelAnimationFrame;
- window.requestAnimationFrame=function(fn){ made('frame');
-   return raf.call(window,function(t){ freed('frame'); return fn(t) }) };
- window.cancelAnimationFrame=function(id){ freed('frame'); return caf.call(window,id) };
+ var st=window.setTimeout,ct=window.clearTimeout,si=window.setInterval,ci=window.clearInterval;
+ var timers=new Set(),intervals=new Set(),frames=new Set();
+ function clearTracked(id){if(timers.delete(id))freed('timer');if(intervals.delete(id))freed('interval')}
+ window.setTimeout=function(fn,delay,...args){if(typeof fn!=='function')return st.call(window,fn,delay,...args);var id=st.call(window,function(...a){if(timers.delete(id))freed('timer');return fn.apply(this,a)},delay,...args);timers.add(id);made('timer');return id};
+ window.clearTimeout=function(id){clearTracked(id);return ct.call(window,id)};
+ window.setInterval=function(...a){var id=si.apply(window,a);intervals.add(id);made('interval');return id};
+ window.clearInterval=function(id){clearTracked(id);return ci.call(window,id)};
+ var raf=window.requestAnimationFrame,caf=window.cancelAnimationFrame;
+ window.requestAnimationFrame=function(fn){var id=raf.call(window,function(t){if(frames.delete(id))freed('frame');return fn(t)});frames.add(id);made('frame');return id};
+ window.cancelAnimationFrame=function(id){if(frames.delete(id))freed('frame');return caf.call(window,id)};
  try{ var ET=EventTarget.prototype, al=ET.addEventListener, rl=ET.removeEventListener;
    ET.addEventListener=function(){ made('listener'); return al.apply(this,arguments) };
    ET.removeEventListener=function(){ freed('listener'); return rl.apply(this,arguments) }; }catch(e){}
