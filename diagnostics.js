@@ -179,3 +179,35 @@
  try{ console.log('[PromoMixer] resource ledger on — session '+SID+
    '. __PBCDIAG.table() for the live counts, diagnostics.html for previous sessions.') }catch(e){}
 })();
+
+/* Bounded crash breadcrumbs: metadata only, never retain audio or tensors. */
+(function(){
+ const D=window.__PBCDIAG;if(!D)return;
+ const key='pbc.diag.breadcrumbs',sid=D.sid,now=()=>performance.now();
+ let seq=0,ring=[],active=new Map(),last=now(),dirty=false;
+ const old=localStorage.getItem(key);
+ try{if(old)localStorage.setItem(key+'.previous',old)}catch(e){}
+ function flush(){try{localStorage.setItem(key,JSON.stringify({sid,at:Date.now(),active:[...active.values()].slice(0,100),events:ring}));dirty=false}catch(e){}}
+ function log(type,data={},urgent=false){ring.push({n:++seq,t:Math.round(now()),type,...data});if(ring.length>256)ring.shift();dirty=true;if(urgent)flush()}
+ function size(x){return x?.byteLength??x?.size??(x?.length&&x?.numberOfChannels?x.length*x.numberOfChannels*4:0)}
+ function wrap(o,k,label,meta){if(!o||typeof o[k]!=='function'||o[k].__pbcTrace)return;const f=o[k];function traced(...a){let id=++seq,t=now(),d={id,label,...(meta?meta(a,this):{})};active.set(id,d);log('begin',d,true);function end(ok,v){active.delete(id);log(ok?'end':'error',{id,label,ms:Math.round(now()-t),bytes:size(v),error:ok?undefined:String(v).slice(0,300)},!ok);return v}try{let v=f.apply(this,a);if(v&&typeof v.then==='function'){v.then(x=>end(true,x),e=>end(false,e));return v}return end(true,v)}catch(e){end(false,e);throw e}}traced.__pbcTrace=true;try{o[k]=traced}catch(e){}}
+ wrap(window,'fetch','fetch',a=>({url:String(a[0]?.url??a[0]).split('?')[0].slice(0,200)}));
+ for(const k of ['arrayBuffer','json','blob','text'])wrap(window.Response?.prototype,k,'response.'+k);
+ wrap(window.Blob?.prototype,'arrayBuffer','blob.read',(_,o)=>({bytes:o.size}));
+ wrap(window.BaseAudioContext?.prototype,'decodeAudioData','audio.decode',a=>({bytes:size(a[0])}));
+ wrap(window.OfflineAudioContext?.prototype,'startRendering','audio.render',(_,o)=>({frames:o.length,rate:o.sampleRate}));
+ wrap(window.AudioContext?.prototype,'close','audio.close');
+ wrap(window.WebAssembly,'instantiate','wasm.instantiate',a=>({bytes:size(a[0])}));
+ wrap(window.WebAssembly,'instantiateStreaming','wasm.streaming');
+ wrap(window.WebAssembly?.Memory?.prototype,'grow','wasm.grow',(a,o)=>({pages:a[0],bytes:o.buffer.byteLength}));
+ wrap(window.IDBObjectStore?.prototype,'put','storage.put',(_,o)=>({store:o.name}));
+ wrap(window.IDBObjectStore?.prototype,'add','storage.add',(_,o)=>({store:o.name}));
+ addEventListener('error',e=>log('window.error',{message:String(e.message||e.type),file:e.filename,line:e.lineno},true));
+ addEventListener('unhandledrejection',e=>log('rejection',{message:String(e.reason).slice(0,500)},true));
+ addEventListener('pagehide',()=>log('pagehide',{},true));
+ document.addEventListener('visibilitychange',()=>log('visibility',{state:document.visibilityState},true));
+ try{new PerformanceObserver(l=>{for(const e of l.getEntries())log('longtask',{ms:Math.round(e.duration)})}).observe({type:'longtask',buffered:true})}catch(e){}
+ const stage=D.stage;D.stage=function(name){log('stage',{name},true);return stage.apply(this,arguments)};
+ const timer=setInterval(()=>{let t=now(),m=performance.memory;log('heartbeat',{lag:Math.max(0,Math.round(t-last-1000)),heap:m?.usedJSHeapSize,limit:m?.jsHeapSizeLimit,active:active.size});last=t;const ort=window.ort;wrap(ort?.InferenceSession,'create','onnx.create',a=>({bytes:size(a[0])}));wrap(ort?.InferenceSession?.prototype,'run','onnx.run');wrap(ort?.InferenceSession?.prototype,'release','onnx.release');if(dirty)flush()},1000);
+ D.trace=log;D.breadcrumbs=()=>({sid,active:[...active.values()],events:ring.slice()});D.previousBreadcrumbs=()=>JSON.parse(localStorage.getItem(key+'.previous')||'null');
+})();
