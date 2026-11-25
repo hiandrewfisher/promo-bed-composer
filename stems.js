@@ -38,11 +38,17 @@ const PARTS=4;
    the sample library. So look for it next to the page first, and otherwise on
    the published site, which serves these files with CORS. Either way the audio
    stays here: the only thing crossing the network is the model, downloading. */
-const HOME=(window.PBC_MODELS||'https://hiandrewfisher.github.io/promo-bed-composer/')+'models/';
+/* A published artifact runs under a Content Security Policy whose connect-src
+   is its own frame only, so fetching the model from anywhere else is refused
+   before it leaves the page. Only reach for the published site when this page
+   was told to, or is already being served from it: everywhere else the model
+   has to sit beside the page or the feature stays off. */
+const HOME=window.PBC_MODELS?window.PBC_MODELS+'models/'
+ :(/(^|\.)github\.io$/.test(location.hostname)?'https://hiandrewfisher.github.io/promo-bed-composer/models/':null);
 let BASE=null;
 async function findBase(){
  if(BASE)return BASE;
- const tries=[new URL('models/',document.baseURI).href, HOME];
+ const tries=[new URL('models/',document.baseURI).href, HOME].filter(Boolean);
  for(const b of tries){
   try{const r=await fetch(b+'4stems.onnx.part0',{method:'HEAD',mode:'cors'});
    if(r.ok){BASE=b;console.log('[stems] model at '+b);return b}}catch(e){}
