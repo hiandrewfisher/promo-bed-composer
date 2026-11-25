@@ -18,3 +18,11 @@ assert(!Q.pcm(fake(new Float32Array(44100))).pass);assert(Q.pcm(fake(new Float32
 assert(html.includes('window.PBCSourceBusy='));
 assert(userlib.includes('Math.min(list.length,opts.limit,1)'));
 console.log('96 candidate scores, 32 selected scores, transcription and PCM checks passed');
+
+(async()=>{const sample=(hz,amp)=>{const sampleRate=16000,x=Float32Array.from({length:16000},(_,i)=>amp*Math.sin(2*Math.PI*hz*i/sampleRate));return {sampleRate,duration:1,numberOfChannels:1,getChannelData:()=>x}};
+ const note=(name,id,m,v)=>({r:{name,kind:'piano'},id,m,key:m,t:0,dur:1,v,tune:0});
+ const b=await w.PBC._balance({notes:[note('keys','a',69,.8),note('lead','b',72,.3)],hits:[]},['keys','lead'],{}, {a:sample(440,.6),b:sample(523,.2)},{},3);
+ assert(Object.values(b.g).every(Number.isFinite));assert(b.g.lead>b.g.keys);
+ assert.equal([...html.matchAll(/await graph\(/g)].length,1);
+ assert(!html.includes('graph(false)'));console.log('Sample-based balancing: finite gains, quieter part boosted relative to louder part, one graph pass');
+})().catch(e=>{console.error(e);process.exitCode=1});
