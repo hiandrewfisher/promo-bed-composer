@@ -125,11 +125,18 @@ let AC=null,W=null,WU=null;
 const ctx=()=>{if(AC)return AC;
   try{AC=new AudioContext({sampleRate:11025})}catch(e){AC=new AudioContext()}
   return AC};
+/* Spleeter is trained at 44.1k, so separation needs its own context at that rate */
+let AC44=null;
+const ctx44=()=>{if(AC44)return AC44;
+  try{AC44=new AudioContext({sampleRate:44100})}catch(e){AC44=new AudioContext()}
+  return AC44};
 const worker=()=>{if(W)return W;
   WU=URL.createObjectURL(new Blob(['('+kernel.toString()+')()'],{type:'text/javascript'}));
   W=new Worker(WU);URL.revokeObjectURL(WU);WU=null;return W};
 const shut=()=>{if(W){W.terminate();W=null;log('worker released')}
-  if(AC){AC.close().catch(()=>{});AC=null}};
+  if(AC){AC.close().catch(()=>{});AC=null}
+  if(AC44){AC44.close().catch(()=>{});AC44=null}
+  if(window.STEMS)STEMS.release();};
 
 const keyOf=f=>f.name+'|'+f.size;
 const safe=k=>k.replace(/[^A-Za-z0-9._-]+/g,'_').slice(0,120);
@@ -159,11 +166,39 @@ function analyse(mono,sr,name){
 
 const MAXSEC=60;
 let since=0;
-async function one(f){
+
+/* Separate first, then read the harmony from the pitched stems alone. A full mix
+   smears the chroma with cymbals and kick spill, which is what made every track
+   come back minor; bass and other carry the actual chords. */
+async function stemMono(f,onStage){
+ const ab=await f.arrayBuffer();
+ let buf;
+ try{buf=await ctx44().decodeAudioData(ab)}catch(e){return null}
+ let st=null;
+ try{st=await window.STEMS.separate(buf,{maxSec:MAXSEC,onProgress:(p,m)=>onStage&&onStage(m,p)})}
+ catch(e){log('separation failed for',f.name,e.message);return null}
+ finally{buf=null}
+ const L=st.length,m=Math.floor(L/4),mono=new Float32Array(m);
+ const b0=st.bass[0],b1=st.bass[1],o0=st.other[0],o1=st.other[1];
+ for(let i=0;i<m;i++){const j=i*4;
+  mono[i]=((b0[j]+b1[j]+o0[j]+o1[j])+(b0[j+1]+b1[j+1]+o0[j+1]+o1[j+1])
+          +(b0[j+2]+b1[j+2]+o0[j+2]+o1[j+2])+(b0[j+3]+b1[j+3]+o0[j+3]+o1[j+3]))*0.125}
+ let pe=0,he=0;
+ const d0=st.drums[0];
+ for(let i=0;i<L;i+=7){pe+=d0[i]*d0[i];he+=(b0[i]+o0[i])*(b0[i]+o0[i])}
+ return {mono,sr:st.sampleRate/4,drumShare:pe/Math.max(pe+he,1e-9)};
+}
+
+async function one(f,useStems,onStage){
  const k=keyOf(f);
  if(await has(k)){log('already analysed',f.name);return 'skip'}
- let ab,buf,mono=null,sr=0;
- try{
+ let ab,buf,mono=null,sr=0,extra=null;
+ if(useStems&&window.STEMS){
+  const r=await stemMono(f,onStage);
+  if(r){mono=r.mono;sr=r.sr;extra={stems:1,drumShare:+r.drumShare.toFixed(3)};
+   log('analysed from stems',f.name,'drums',Math.round(r.drumShare*100)+'%')}
+ }
+ if(!mono) try{
   ab=await f.arrayBuffer();
   try{buf=await ctx().decodeAudioData(ab)}
   catch(e){log('cannot decode',f.name,e.message);return 'fail'}
@@ -176,6 +211,7 @@ async function one(f){
  if(!mono||mono.length<sr)return 'fail';
  const piece=await analyse(mono,sr,f.name);
  mono=null;
+ if(extra)Object.assign(piece,extra);
  piece.k=k;piece.added=Date.now();piece.bytes=f.size;
  piece.audio=await keep(f,k);piece.type=f.type||'';
  await tx('readwrite',s=>s.put(piece));
@@ -189,14 +225,16 @@ const UL={
  async audio(piece){if(!piece||!piece.audio)return null;const d=await dir();if(!d)return null;
   try{return await (await d.getFileHandle(piece.audio)).getFile()}catch(e){log('audio missing for',piece.title);return null}},
 
- async ingest(files,onProgress){
+ async ingest(files,onProgress,opts){
   const list=[...files].filter(f=>/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name));
   log('ingest',list.length,'of',files.length,'files');
   let ok=0,skip=0,fail=0;
   for(let i=0;i<list.length;i++){
    const f=list[i];
    onProgress&&onProgress({i,n:list.length,name:f.name,ok,skip,fail});
-   try{const r=await one(f);r==='ok'?ok++:r==='skip'?skip++:fail++}
+   try{const r=await one(f,opts&&opts.stems,(m,p)=>
+     onProgress&&onProgress({i,n:list.length,name:f.name,ok,skip,fail,stage:m,frac:p}));
+    r==='ok'?ok++:r==='skip'?skip++:fail++}
    catch(e){fail++;log('failed',f.name,e.message)}
    await new Promise(r=>requestAnimationFrame(()=>r()));
   }
