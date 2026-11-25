@@ -63,17 +63,29 @@ function kernel(){
     if(s>ps){ps=s;ph=o}}
    post('tempo.ready',{bpm:+bpm.toFixed(1),confidence:+bs.toFixed(4)});
    // key by correlating the mean chroma with both profiles at all twelve roots
-   const mean=new Float32Array(12);
-   for(let f=0;f<F;f++)for(let p=0;p<12;p++)mean[p]+=CH[f*12+p];
+   const mean=new Float32Array(12),bmean=new Float32Array(12);
+   for(let f=0;f<F;f++){const w=EN[f];                 // loud frames carry the key
+    for(let p=0;p<12;p++){mean[p]+=CH[f*12+p]*w;bmean[p]+=BASS[f*12+p]*w}}
    let tot=0;for(let p=0;p<12;p++)tot+=mean[p];
    if(tot>0)for(let p=0;p<12;p++)mean[p]/=tot;
-   const corr=(a,b)=>{let s=0;for(let i=0;i<12;i++)s+=a[i]*b[i];return s};
-   let key=0,mode='maj',ks=-1;
-   for(let r=0;r<12;r++){const rot=new Float32Array(12);
-    for(let i=0;i<12;i++)rot[i]=mean[(i+r)%12];
-    const a=corr(rot,KMAJ),b=corr(rot,KMIN);
-    if(a>ks){ks=a;key=r;mode='maj'}if(b>ks){ks=b;key=r;mode='min'}}
-   post('key.ready',{key:PC[key],mode});
+   // Pearson, so neither profile wins on its own sum
+   const pear=(a,b)=>{let ma=0,mb=0;for(let i=0;i<12;i++){ma+=a[i];mb+=b[i]}ma/=12;mb/=12;
+    let n=0,da=0,db=0;for(let i=0;i<12;i++){const u=a[i]-ma,v=b[i]-mb;n+=u*v;da+=u*u;db+=v*v}
+    return da>0&&db>0?n/Math.sqrt(da*db):0};
+   const rot=r=>{const o=new Float32Array(12);for(let i=0;i<12;i++)o[i]=mean[(i+r)%12];return o};
+   let key=0,mode='maj',ks=-2,second=-2;
+   for(let r=0;r<12;r++){const v=rot(r);
+    const a=pear(v,KMAJ),b=pear(v,KMIN);
+    if(a>ks){second=ks;ks=a;key=r;mode='maj'}else if(a>second)second=a;
+    if(b>ks){second=ks;ks=b;key=r;mode='min'}else if(b>second)second=b}
+   // a major key and its relative minor share a chroma, so when the two best
+   // answers are nearly tied, let the bass say which note is home
+   if(ks-second<0.06){
+    const rel=mode==='maj'?(key+9)%12:(key+3)%12;
+    let bt=0;for(let p=0;p<12;p++)if(bmean[p]>bmean[bt])bt=p;
+    const near=(a,b)=>Math.min((a-b+12)%12,(b-a+12)%12)<=1;
+    if(near(bt,rel)&&!near(bt,key)){key=rel;mode=mode==='maj'?'min':'maj'}}
+   post('key.ready',{key:PC[key],mode,margin:+(ks-second).toFixed(3)});
    // chords every half bar, melody every beat, from the same chroma
    const beatF=lag,bars=Math.max(2,Math.floor((F-ph)/(beatF*4))),BAR=4;
    const chords=[],mel=[];
@@ -86,9 +98,9 @@ function kernel(){
     if(st>0)for(let p=0;p<12;p++)seg[p]/=st;
     let best=null,bv=-1;
     for(const q in TPL)for(let r=0;r<12;r++){
-     let s=0,o=0;for(const iv of TPL[q])s+=seg[(r+iv)%12];
-     for(let p=0;p<12;p++)if(!TPL[q].some(iv=>(r+iv)%12===p))o+=seg[p];
-     const v=s/TPL[q].length-o*0.35;
+     let s=0,o=0,on=0;for(const iv of TPL[q])s+=seg[(r+iv)%12];
+     for(let p=0;p<12;p++)if(!TPL[q].some(iv=>(r+iv)%12===p)){o+=seg[p];on++}
+     const v=s/TPL[q].length-(on?o/on:0)*1.6;
      if(v>bv){bv=v;best=[r,q]}}
     let bp=0,bb=-1;for(let p=0;p<12;p++)if(bas[p]>bb){bb=bas[p];bp=p}
     chords.push([h*2,2,best[0],bp,best[1]]);
@@ -106,6 +118,18 @@ function kernel(){
     if(mel.length&&mel[mel.length-1][2]===midi)mel[mel.length-1][1]+=1;
     else mel.push([bt,1,midi]);
    }
+   // the chords are stronger evidence of the mode than a whole-track chroma
+   // average, which cannot tell a key from its relative: if the chord built on
+   // the tonic keeps coming back minor, the piece is minor
+   {let mj=0,mn=0;
+    for(const c of chords){if(c[2]!==key)continue;
+     if(c[4]==='min'||c[4]==='m7')mn++;else if(c[4]==='maj'||c[4]==='7')mj++}
+    if(mn+mj>=3){const m2=mn>mj*1.4?'min':(mj>mn*1.4?'maj':mode);
+     if(m2!==mode){post('key.revised',{from:mode,to:m2,onTonic:{maj:mj,min:mn}});mode=m2}}
+    else{ // too few chords on the tonic: ask the third directly
+     const th3=mean[(key+3)%12],th4=mean[(key+4)%12];
+     const m2=th3>th4*1.25?'min':(th4>th3*1.25?'maj':mode);
+     if(m2!==mode){post('key.revised',{from:mode,to:m2,third:{min:+th3.toFixed(4),maj:+th4.toFixed(4)}});mode=m2}}}
    const phr=[];for(let i=8;i<=bars;i+=8)phr.push(i*BAR);
    if(!phr.length)phr.push(bars*BAR);
    // energy arc, four quartiles, for the arranger

@@ -33,7 +33,22 @@ function fft(re,im,inv){
 
 /* ---- model loading: chunked fp32 ONNX, cached in OPFS ---- */
 let SES=null, LOADING=null;
-const PARTS=4, BASE=new URL('models/',document.baseURI).href;
+const PARTS=4;
+/* The model is 157 MB, which fits the site but not an artifact already carrying
+   the sample library. So look for it next to the page first, and otherwise on
+   the published site, which serves these files with CORS. Either way the audio
+   stays here: the only thing crossing the network is the model, downloading. */
+const HOME=(window.PBC_MODELS||'https://hiandrewfisher.github.io/promo-bed-composer/')+'models/';
+let BASE=null;
+async function findBase(){
+ if(BASE)return BASE;
+ const tries=[new URL('models/',document.baseURI).href, HOME];
+ for(const b of tries){
+  try{const r=await fetch(b+'4stems.onnx.part0',{method:'HEAD',mode:'cors'});
+   if(r.ok){BASE=b;console.log('[stems] model at '+b);return b}}catch(e){}
+ }
+ return null;
+}
 async function cached(){
  try{
   const d=await navigator.storage.getDirectory();
@@ -46,9 +61,10 @@ async function cached(){
 async function bytes(onProgress){
  const c=await cached();
  if(c instanceof Uint8Array){onProgress&&onProgress(1,'from cache');return c}
+ const base=await findBase(); if(!base)throw new Error('the separation model is not reachable');
  const bufs=[]; let got=0, total=157441415;
  for(let i=0;i<PARTS;i++){
-  const r=await fetch(BASE+'4stems.onnx.part'+i);
+  const r=await fetch(base+'4stems.onnx.part'+i,{mode:'cors'});
   if(!r.ok) throw new Error('model part '+i+' missing ('+r.status+')');
   const b=new Uint8Array(await r.arrayBuffer());
   bufs.push(b); got+=b.length; onProgress&&onProgress(got/total,'downloading');
@@ -63,10 +79,13 @@ async function session(onProgress){
  if(SES) return SES;
  if(LOADING) return LOADING;
  LOADING=(async()=>{
+  const base=await findBase();
+  if(!base)throw new Error('the separation model is not reachable');
   if(!window.ort){await new Promise((res,rej)=>{const s=document.createElement('script');
-    s.src=BASE+'ort.wasm.min.js';s.onload=res;s.onerror=()=>rej(new Error('onnxruntime-web failed to load'));
+    s.src=base+'ort.wasm.min.js';s.crossOrigin='anonymous';
+    s.onload=res;s.onerror=()=>rej(new Error('onnxruntime-web failed to load'));
     document.head.appendChild(s)})}
-  ort.env.wasm.wasmPaths=BASE; ort.env.wasm.numThreads=1; ort.env.logLevel='error';
+  ort.env.wasm.wasmPaths=base; ort.env.wasm.numThreads=1; ort.env.logLevel='error';
   const b=await bytes(onProgress);
   onProgress&&onProgress(1,'starting model');
   SES=await ort.InferenceSession.create(b,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
@@ -145,9 +164,7 @@ async function separate(buf,opt){
  return res;
 }
 
-async function available(){
- try{const r=await fetch(BASE+'4stems.onnx.part0',{method:'HEAD'});return r.ok}catch(e){return false}
-}
+async function available(){return !!(await findBase())}
 function release(){if(SES){try{SES.release()}catch(e){}SES=null}}
 
 window.STEMS={separate,available,release,names:NAMES};
