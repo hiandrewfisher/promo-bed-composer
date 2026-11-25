@@ -196,12 +196,12 @@ async function has(k){const p=await tx('readonly',s=>s.get(k));
 function analyse(mono,sr,name){
  const w=worker();
  return new Promise((res,rej)=>{
-  const onmsg=({data:x})=>{
-   if(x.type==='stage'){log(x.stage,x);return}
-   w.removeEventListener('message',onmsg);
-   x.type==='done'?res(x.piece):rej(new Error(x.message||'analysis failed'))};
-  w.addEventListener('message',onmsg);
-  w.postMessage({pcm:mono.buffer,sr,name},[mono.buffer])});
+  let timer;const cleanup=()=>{clearTimeout(timer);w.removeEventListener('message',onmsg);w.removeEventListener('error',onerror)};
+  const onerror=e=>{cleanup();rej(new Error(e.message||'Analysis worker failed'))};
+  const onmsg=({data:x})=>{if(x.type==='stage'){log(x.stage,x);return}cleanup();x.type==='done'?res(x.piece):rej(new Error(x.message||'analysis failed'))};
+  w.addEventListener('message',onmsg);w.addEventListener('error',onerror);timer=setTimeout(()=>onerror({message:'Analysis exceeded time limit'}),90000);
+  try{w.postMessage({pcm:mono.buffer,sr,name},[mono.buffer])}catch(e){onerror(e)}
+ });
 }
 
 const MAXSEC=60;
@@ -266,7 +266,7 @@ async function one(f,useStems,onStage){
  return 'ok';
 }
 
-const activeKeys=new Set();
+const activeKeys=new Set();let ingestBusy=false;
 const UL={
  resetSelection(){activeKeys.clear();window.PBC_MINE_N=0},
  /* the recording itself, read back on demand */
@@ -310,6 +310,7 @@ const UL={
 
  async ingest(files,onProgress,opts){
   if(!Number.isSafeInteger(opts?.limit)||opts.limit<1)throw new Error('Library analysis requires an explicit generation batch limit');
+  if(ingestBusy)throw Error('One recording is already being analysed');ingestBusy=true;try{
   const list=[...files].filter(f=>/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name));
   list.length=Math.min(list.length,opts.limit,1);
   log('ingest',list.length,'of',files.length,'files');
@@ -323,10 +324,10 @@ const UL={
    catch(e){fail++;log('failed',f.name,e.message)}
    await new Promise(r=>setTimeout(r,0));
   }
-  await shut();
   onProgress&&onProgress({i:list.length,n:list.length,ok,skip,fail,done:true});
   log('ingest complete',{ok,skip,fail});
   return {ok,skip,fail,total:list.length};
+  }finally{try{await shut()}finally{ingestBusy=false}}
  },
  /* A new composition built out of the whole library rather than one track:
     the chords and melody of each eight-bar span are lifted from a different
