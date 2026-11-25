@@ -2619,7 +2619,8 @@ globalThis.__PBCWAV=()=>{let n=0;for(const t of s.tracks)if(t.file)n+=t.file.siz
 globalThis.__PBCWAVDISK=()=>{let n=0;for(const t of s.tracks)if(t.ofs)n+=t.fsize||0;return n};
 function queueBed(t,quiet){t.L=s.duration;t.A=analysis();t.readLabel=`read ${fmt(t.read[0])}–${fmt(t.read[1])} · ${t.L}s bed`;s.queue.push(t);s.total++;if(!quiet){progress(`${s.queue.length} bed${s.queue.length>1?'s':''} waiting`);work()}}
 let LASTGEN=0;
-function composeNew(n){const now=Date.now();if(now-LASTGEN<600)return;LASTGEN=now;if(!s.voice){setStatus('Add a voice recording first');return}const ids=GEN.map(g=>g.id).filter(k=>s.gw[k]>0);if(!s.randGenre&&!ids.length){setStatus('Turn up at least one genre in the genre mix');return}const base=selectionSeed(),batch=s.batches[base]=(s.batches[base]||0)+1,R=(a=>()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296})(base^batch);
+let preparingBatch=false;
+async function composeNew(n){if(preparingBatch||s.working||s.queue.length)return;const now=Date.now();if(now-LASTGEN<600)return;LASTGEN=now;if(!s.voice){setStatus('Add a voice recording first');return}const ids=GEN.map(g=>g.id).filter(k=>s.gw[k]>0);if(!s.randGenre&&!ids.length){setStatus('Turn up at least one genre in the genre mix');return}preparingBatch=true;try{if(window.PBCPrepareLibrary)await window.PBCPrepareLibrary(n)}catch(e){setStatus('Library analysis failed: '+e.message);return}finally{preparingBatch=false}const base=selectionSeed(),batch=s.batches[base]=(s.batches[base]||0)+1,R=(a=>()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296})(base^batch);
 const blend={};for(const k of ids)blend[k]=s.gw[k];for(let i=0;i<n;i++){const sd=(base^Math.imul(batch*16+i+1,0x9E3779B1))>>>0,src='library';const bl=s.randGenre?randomBlend(sd):blend;const nb0=newBed('mix',sd,src,bl);nb0.faith=s.src/100;queueBed(nb0,1)}progress(`${s.queue.length} bed${s.queue.length>1?'s':''} waiting`);work();setStatus(`Generating ${n} beds for ${fmt(s.start)}–${fmt(s.start+s.voiceLength)} · ${s.duration}s`);render()}
 function analysis(){const key=[s.start,s.voiceLength,JSON.stringify(s.skips),s.voiceRevision].join('|');if(!s.analysis||s.analysis.key!==key){s.analysis={key,A:PBC.analyze(s.env,pieces(),s.voice)}}return s.analysis.A}
 // pick N weights 1-100, scale them so the biggest is 100, then hand them to N genres at random
@@ -3272,7 +3273,7 @@ select{padding-right:36px;cursor:pointer;
  const d=document.createElement('details');d.className='creditsBox';d.id='mineBox';
  d.innerHTML='<summary>Your music library <b id="mineCount">(0)</b></summary>'+
   '<div class="mineBody">'+
-  '<p class="sub">Point this at your own WAV or MP3 files. Each one is analysed once for key, tempo, chords and melody, and the beds get composed from that with the sampled instruments. The audio itself is never stored or uploaded.</p>'+
+  '<p class="sub">Point this at your own WAV or MP3 files. Files wait until you generate beds. Only the next requested batch is analysed for key, tempo, chords and melody. The audio itself is never stored or uploaded.</p>'+
   '<div class="mineRow">'+
    '<label class="minePick">Choose folder<input id="mineDir" type="file" webkitdirectory multiple hidden></label>'+
    '<label class="minePick">Choose files<input id="mineFiles" type="file" accept="audio/*" multiple hidden></label>'+
@@ -3297,8 +3298,9 @@ select{padding-right:36px;cursor:pointer;
      :'Nothing added yet, so beds come from the bundled public-domain scores.';
    return n}catch(e){return 0}};
  const prog=t=>{$$('mineProg').textContent=t};
- async function take(files){
-  if(!files||!files.length)return;
+ const pending=new Map();
+ function take(files){for(const f of files||[]){if(!/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name))continue;const k=[f.webkitRelativePath||f.name,f.size,f.lastModified].join('|');if(!pending.has(k))pending.set(k,f)}prog(pending.size+' files waiting for generation');}
+ window.PBCPrepareLibrary=async function(n){const entries=[...pending.entries()].slice(0,n);if(!entries.length)return;const files=entries.map(x=>x[1]);
   prog('Reading '+files.length+' file'+(files.length>1?'s':'')+'…');
   const t0=performance.now();
   const useStems=window.PBC_STEMS!==false;
@@ -3307,8 +3309,9 @@ select{padding-right:36px;cursor:pointer;
    if(x.stage){prog(x.stage+' '+Math.round((x.frac||0)*100)+'% — '+(x.i+1)+' of '+x.n+' — '+(x.name||'').slice(0,34));return}
    prog('Analysing '+(x.i+1)+' of '+x.n+' — '+(x.name||'').slice(0,42));
   },{stems:useStems});
+  for(const [k] of entries)pending.delete(k);
   await count();
-  prog('Added '+r.ok+(r.skip?', '+r.skip+' already there':'')+(r.fail?', '+r.fail+' unreadable':'')+
+  prog(pending.size+' waiting · Added '+r.ok+(r.skip?', '+r.skip+' already there':'')+(r.fail?', '+r.fail+' unreadable':'')+
    ' · '+Math.round((performance.now()-t0)/1000)+'s');
  }
  $$('mineDir').onchange=e=>take(e.target.files);
@@ -3318,7 +3321,7 @@ select{padding-right:36px;cursor:pointer;
   if(!armed){armed=1;$$('mineClear').textContent='Really clear?';
    setTimeout(()=>{armed=0;$$('mineClear').textContent='Clear'},4000);return}
   armed=0;$$('mineClear').textContent='Clear';
-  await UL.clear();await count();prog('Library cleared')};
+  pending.clear();await UL.clear();await count();prog('Library cleared')};
  ['dragover','drop'].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();
   if(ev==='drop'&&e.dataTransfer&&e.dataTransfer.files&&e.target.closest('.mineBody'))take(e.dataTransfer.files)}));
  count();
