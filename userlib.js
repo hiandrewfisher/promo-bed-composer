@@ -36,12 +36,12 @@ function kernel(){
    const HOP=Math.round(sr*0.023),WIN=HOP*2,F=Math.floor((N-WIN)/HOP);
    if(F<8)throw new Error('too short');
    // chroma per frame over five octaves, plus a bass chroma from the lowest two
-   const CH=new Float32Array(F*12),BASS=new Float32Array(F*12),EN=new Float32Array(F);
+   const CH=new Float32Array(F*12),BASS=new Float32Array(F*12),EN=new Float32Array(F),PITCH=new Float32Array(F*36);
    for(let f=0;f<F;f++){const a=f*HOP,b=a+WIN;let e=0;
     for(let i=a;i<b;i++)e+=x[i]*x[i];EN[f]=Math.sqrt(e/WIN);
     for(let p=0;p<12;p++){let m=0,mb=0;
      for(let o=2;o<7;o++){const hz=440*Math.pow(2,(p+12*o-57)/12);
-      if(hz>sr*0.45)continue;const g=goertzel(x,a,b,hz,sr);m+=g;if(o<4)mb+=g}
+      if(hz>sr*0.45)continue;const g=goertzel(x,a,b,hz,sr);m+=g;if(o<4)mb+=g;if(o>=4)PITCH[f*36+(o-4)*12+p]=g}
      CH[f*12+p]=m;BASS[f*12+p]=mb}}
    post('chroma.ready',{frames:F});
    // onset envelope from positive spectral flux, then tempo by autocorrelation
@@ -105,18 +105,22 @@ function kernel(){
     let bp=0,bb=-1;for(let p=0;p<12;p++)if(bas[p]>bb){bb=bas[p];bp=p}
     chords.push([h*2,2,best[0],bp,best[1]]);
    }
-   for(let bt=0;bt<bars*BAR;bt++){
-    const a=Math.round(ph+bt*beatF),b=Math.min(F,Math.round(a+beatF));
+   // Half-beat melody tracking: distinguish upper-register pitches from bass,
+   // prefer persistent peaks, allow rests, and discourage octave jumps.
+   let prev=-1;const confidence=[],floor=Math.max(...EN)*.025;
+   for(let bt=0;bt<bars*BAR*2;bt++){
+    const a=Math.round(ph+bt*beatF/2),b=Math.min(F,Math.round(a+beatF/2));
     if(b-a<2)break;
-    let bp=0,bv=-1;
-    for(let p=0;p<12;p++){let s=0;for(let f=a;f<b;f++)s+=CH[f*12+p];if(s>bv){bv=s;bp=p}}
-    // put it in the octave that actually carries the energy
-    let oct=5,ov=-1;
-    for(let o=4;o<7;o++){const hz=440*Math.pow(2,(bp+12*o-57)/12);if(hz>sr*0.45)continue;
-     const g=goertzel(x,a*HOP,Math.min(N,b*HOP),hz,sr);if(g>ov){ov=g;oct=o}}
-    const midi=bp+12*oct;
-    if(mel.length&&mel[mel.length-1][2]===midi)mel[mel.length-1][1]+=1;
-    else mel.push([bt,1,midi]);
+    let energy=0;const spec=new Float32Array(36);
+    for(let f=a;f<b;f++){energy+=EN[f];for(let j=0;j<36;j++)spec[j]+=PITCH[f*36+j]}
+    if(energy/(b-a)<floor){prev=-1;continue}
+    let best=-1,bv=-1,second=0;const ch=chords[Math.min(chords.length-1,Math.floor(bt/4))],tones=ch?TPL[ch[4]].map(v=>(v+ch[2])%12):[];
+    for(let j=0;j<36;j++){const m=j+60,base=spec[j],harm=j+12<36?spec[j+12]*.18:0,sub=j>=12?spec[j-12]*.22:0;let v=Math.max(0,base+harm-sub)*(tones.includes(m%12)?1.12:1);
+     if(prev>=0)v*=Math.exp(-Math.max(0,Math.abs(m-prev)-5)*.045);
+     if(v>bv){second=bv;bv=v;best=m}else if(v>second)second=v}
+    if(best<0||bv<=0)continue;
+    confidence.push((bv-Math.max(0,second))/bv);
+    const t=bt/2,last=mel[mel.length-1];if(last&&last[2]===best&&Math.abs(last[0]+last[1]-t)<.01)last[1]+=.5;else mel.push([t,.5,best]);prev=best;
    }
    // the chords are stronger evidence of the mode than a whole-track chroma
    // average, which cannot tell a key from its relative: if the chord built on
@@ -139,7 +143,7 @@ function kernel(){
    postMessage({type:'done',piece:{
      title:name.replace(/\.[^.]+$/,''),composer:'Your library',
      mode,bar:BAR,len:bars*BAR,mel,chords,phr,
-     key,bpm:+bpm.toFixed(1),arc:arc.map(v=>+(v/am).toFixed(3)),mine:1}});
+     key,bpm:+bpm.toFixed(1),arc:arc.map(v=>+(v/am).toFixed(3)),transcription:{keyMargin:+(ks-second).toFixed(3),tempoConfidence:+bs.toFixed(4),melodyConfidence:confidence.length?+(confidence.reduce((a,b)=>a+b,0)/confidence.length).toFixed(3):0},mine:1}});
   }catch(e){postMessage({type:'error',message:e.message})}
  };
 }
@@ -157,17 +161,17 @@ const ctx44=()=>{if(AC44)return AC44;
 const worker=()=>{if(W)return W;
   WU=URL.createObjectURL(new Blob(['('+kernel.toString()+')()'],{type:'text/javascript'}));
   W=new Worker(WU);URL.revokeObjectURL(WU);WU=null;return W};
-const shut=()=>{if(W){W.terminate();W=null;log('worker released')}
-  if(AC){AC.close().catch(()=>{});AC=null}
-  if(AC44){AC44.close().catch(()=>{});AC44=null}
-  if(window.STEMS)STEMS.release();};
+const shut=async()=>{if(W){W.terminate();W=null;log('worker released')}
+  if(AC){const c=AC;AC=null;await c.close().catch(()=>{})}
+  if(AC44){const c=AC44;AC44=null;await c.close().catch(()=>{})}
+  if(window.STEMS)await STEMS.release();};
 
 /* Bumped whenever the analysis itself changes, so pieces read by an older
    version can be found and done again. 2: Pearson key correlation (every major
    key used to come back minor), per-out-tone chord penalty, energy-weighted
    chroma, mode settled by the chords, and stems where available. */
-const AV=2;
-const keyOf=f=>f.name+'|'+f.size;
+const AV=3;
+const keyOf=f=>[f.name,f.size,f.lastModified||0].join('|');
 const safe=k=>k.replace(/[^A-Za-z0-9._-]+/g,'_').slice(0,120);
 let DIR=null;
 async function dir(){if(DIR)return DIR;
@@ -249,7 +253,7 @@ async function one(f,useStems,onStage){
  mono=null;
  if(extra)Object.assign(piece,extra);
  piece.k=k;piece.added=Date.now();piece.bytes=f.size;
- piece.audio=await keep(f,k);piece.type=f.type||'';piece.av=AV;
+ piece.audio=null;piece.type=f.type||'';piece.av=AV;
  await tx('readwrite',s=>s.put(piece));
  // the decoder holds memory of its own; give it back every so often
  if(++since>=12){since=0;if(AC){try{await AC.close()}catch(e){}AC=null;log('decoder recycled')}}
@@ -301,7 +305,7 @@ const UL={
  async ingest(files,onProgress,opts){
   if(!Number.isSafeInteger(opts?.limit)||opts.limit<1)throw new Error('Library analysis requires an explicit generation batch limit');
   const list=[...files].filter(f=>/\.(wav|mp3|m4a|aac|ogg|oga|flac|opus|webm|aif|aiff)$/i.test(f.name));
-  list.length=Math.min(list.length,opts.limit);
+  list.length=Math.min(list.length,opts.limit,1);
   log('ingest',list.length,'of',files.length,'files');
   let ok=0,skip=0,fail=0;
   for(let i=0;i<list.length;i++){
@@ -311,9 +315,9 @@ const UL={
      onProgress&&onProgress({i,n:list.length,name:f.name,ok,skip,fail,stage:m,frac:p}));
     if(r==='ok'||r==='skip')activeKeys.add(keyOf(f));r==='ok'?ok++:r==='skip'?skip++:fail++}
    catch(e){fail++;log('failed',f.name,e.message)}
-   await new Promise(r=>requestAnimationFrame(()=>r()));
+   await new Promise(r=>setTimeout(r,0));
   }
-  shut();
+  await shut();
   onProgress&&onProgress({i:list.length,n:list.length,ok,skip,fail,done:true});
   log('ingest complete',{ok,skip,fail});
   return {ok,skip,fail,total:list.length};
